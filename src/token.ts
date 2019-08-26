@@ -1,245 +1,351 @@
+/*
+ * The tokens are laid out and packed in an unconventional way. Here's how it's
+ * all laid out:
+ *
+ * Token enum:
+ *
+ * - `Type` mask, for stripping all the other constants.
+ * - Attributes (e.g. literal, statement start, etc.) for simplifying boolean
+ *   tests against ranges of nodes.
+ * - Precedence start/mask (for binary operators)
+ * - Node types, starting at 0
+ *
+ * Conversions: They leverage the token representation to convert the values
+ * based on a static array table. They must be updated to reflect the existing
+ * nodes.
+ *
+ * Note that there is limited space for token metadata, to maintain the 31-bit
+ * size invariant in V8.
+ */
+
+/**
+ * The token types and attributes.
+ */
 export const enum Token {
-  Type = 0xFF,
+  Type = 0xff,
 
   /* Precedence for binary operators (always positive) */
-  PrecStart               = 8,
-  Precedence              = 15 << PrecStart, // 8-11
+  PrecStart = 8,
+  Precedence = 15 << PrecStart, // 8-11
 
   /* Attribute names */
-  Keyword                 = 1 << 12,
-  Contextual              = 1 << 13 | Keyword,
-  Reserved                = 1 << 14 | Keyword,
-  FutureReserved          = 1 << 15 | Keyword,
+  Contextual = 1 << 12,
+  Reserved = 1 << 13,
+  FutureReserved = 1 << 14,
 
-  IsExpressionStart        = 1 << 16,
-  IsIdentifier             = 1 << 17 | Contextual,
-  IsInOrOf                 = 1 << 18, // 'in' or 'of'
-  IsLogical                = 1 << 19,
-  IsAutoSemicolon          = 1 << 20,
-  IsPatternStart           = 1 << 21, // Start of pattern, '[' or '{'
-  IsAssignOp               = 1 << 22,
-  IsBinaryOp               = 1 << 23 | IsExpressionStart,
-  IsUnaryOp                = 1 << 24 | IsExpressionStart,
-  IsUpdateOp               = 1 << 25 | IsExpressionStart,
-  IsMemberOrCallExpression = 1 << 26,
-  IsStringOrNumber         = 1 << 27,
-  IsCoalesc                = 1 << 28,
-  IsEvalOrArguments        = 1 << 29 | IsExpressionStart | IsIdentifier,
-  IsClassField             = 1 << 30,
-
-  // Note: 1 << 31... turns to negative
+  BadTemplate = 1 << 15,
 
   /* Node types */
-  EOF = 0 | IsAutoSemicolon,
+  EndOfSource = 0, // Pseudo
 
   /* Constants/Bindings */
-  Identifier        = 1 | IsExpressionStart | IsIdentifier,
-  NumericLiteral    = 2 | IsExpressionStart | IsStringOrNumber,
-  StringLiteral     = 3 | IsExpressionStart | IsStringOrNumber,
-  RegularExpression = 4 | IsExpressionStart,
-  FalseKeyword      = 5 | Reserved | IsExpressionStart,
-  TrueKeyword       = 6 | Reserved | IsExpressionStart,
-  NullKeyword       = 7 | Reserved | IsExpressionStart,
+  Identifier = 1,
+  NumericLiteral = 2,
+  StringLiteral = 3,
+  RegularExpression = 4,
+  FalseKeyword = 5 | Reserved,
+  TrueKeyword = 6 | Reserved,
+  NullKeyword = 7 | Reserved,
 
   /* Template nodes */
-  TemplateContinuation = 8 | IsExpressionStart | IsMemberOrCallExpression,
-  TemplateSpan = 9 | IsExpressionStart | IsMemberOrCallExpression,
+  TemplateCont = 8,
+  TemplateTail = 9,
 
   /* Punctuators */
-  Arrow        = 10, // =>
-  LeftParen    = 11 | IsExpressionStart | IsMemberOrCallExpression, // (
-  LeftBrace    = 12 | IsExpressionStart | IsPatternStart, // {
-  Period       = 13 | IsMemberOrCallExpression, // .
-  Ellipsis     = 14, // ...
-  RightBrace   = 15 | IsAutoSemicolon | IsClassField, // }
-  RightParen   = 16, // )
-  Semicolon    = 17 | IsAutoSemicolon | IsClassField, // ;
-  Comma        = 18 | IsClassField, // ,
-  LeftBracket  = 19 | IsExpressionStart | IsPatternStart | IsMemberOrCallExpression, // [
+  Arrow = 10, // =>
+  LeftParen = 11, // (
+  LeftBrace = 12, // {
+  Period = 13, // .
+  Ellipsis = 14, // ...
+  RightBrace = 15, // }
+  RightParen = 16, // )
+  Semicolon = 17, // ;
+  Comma = 18, // ,
+  LeftBracket = 19, // [
   RightBracket = 20, // ]
-  Colon        = 21, // :
+  Colon = 21, // :
   QuestionMark = 22, // ?
-  SingleQuote  = 23, // '
-  DoubleQuote  = 24, // "
-  JSXClose     = 25, // </
-  JSXAutoClose = 26, // />
+  QuestionMarkPeriod = 23, // ?.
+  SingleQuote = 24, // '
+  DoubleQuote = 25, // "
+  JSXClose = 26, // </
+  JSXAutoClose = 27, // />
 
   /* Update operators */
-  Increment = 27 | IsUpdateOp, // ++
-  Decrement = 28 | IsUpdateOp, // --
+  Increment = 28, // ++
+  Decrement = 29, // --
 
   /* Assign operators */
-  Assign                  = 29 | IsAssignOp | IsClassField, // =
-  ShiftLeftAssign         = 30 | IsAssignOp, // <<=
-  ShiftRightAssign        = 31 | IsAssignOp, // >>=
-  LogicalShiftRightAssign = 32 | IsAssignOp, // >>>=
-  ExponentiateAssign      = 33 | IsAssignOp, // **=
-  AddAssign               = 34 | IsAssignOp, // +=
-  SubtractAssign          = 35 | IsAssignOp, // -=
-  MultiplyAssign          = 36 | IsAssignOp, // *=
-  DivideAssign            = 37 | IsAssignOp | IsExpressionStart, // /=
-  ModuloAssign            = 38 | IsAssignOp, // %=
-  BitwiseXorAssign        = 39 | IsAssignOp, // ^=
-  BitwiseOrAssign         = 40 | IsAssignOp, // |=
-  BitwiseAndAssign        = 41 | IsAssignOp, // &=
+  Assign = 30, // =
+  ShiftLeftAssign = 31, // <<=
+  ShiftRightAssign = 32, // >>=
+  LogicalShiftRightAssign = 33, // >>>=
+  ExponentiateAssign = 34, // **=
+  AddAssign = 35, // +=
+  SubtractAssign = 36, // -=
+  MultiplyAssign = 37, // *=
+  DivideAssign = 38, // /=
+  ModuloAssign = 39, // %=
+  BitwiseXorAssign = 40, // ^=
+  BitwiseOrAssign = 41, // |=
+  BitwiseAndAssign = 42, // &=
 
   /* Unary/binary operators */
-  TypeofKeyword      = 42 | IsUnaryOp | Reserved,
-  DeleteKeyword      = 43 | IsUnaryOp | Reserved,
-  VoidKeyword        = 44 | IsUnaryOp | Reserved,
-  Negate             = 45 | IsUnaryOp, // !
-  Complement         = 46 | IsUnaryOp, // ~
-  Add                = 47 | IsUnaryOp | IsBinaryOp | 10 << PrecStart, // +
-  Subtract           = 48 | IsUnaryOp | IsBinaryOp | 10 << PrecStart, // -
-  InKeyword          = 49 | IsBinaryOp | 8 << PrecStart | Reserved | IsInOrOf,
-  InstanceofKeyword  = 50 | IsBinaryOp | 8 << PrecStart | Reserved,
-  Multiply           = 51 | IsBinaryOp | 11 << PrecStart, // *
-  Modulo             = 52 | IsBinaryOp | 11 << PrecStart, // %
-  Divide             = 53 | IsBinaryOp | IsExpressionStart | 11 << PrecStart, // /
-  Exponentiate       = 54 | IsBinaryOp | 12 << PrecStart, // **
-  LogicalAnd         = 55 | IsBinaryOp | IsLogical | 3 << PrecStart, // &&
-  LogicalOr          = 56 | IsBinaryOp | IsLogical | 2 << PrecStart, // ||
-  StrictEqual        = 57 | IsBinaryOp | 7 << PrecStart, // ===
-  StrictNotEqual     = 58 | IsBinaryOp | 7 << PrecStart, // !==
-  LooseEqual         = 59 | IsBinaryOp | 7 << PrecStart, // ==
-  LooseNotEqual      = 60 | IsBinaryOp | 7 << PrecStart, // !=
-  LessThanOrEqual    = 61 | IsBinaryOp | 7 << PrecStart, // <=
-  GreaterThanOrEqual = 62 | IsBinaryOp | 7 << PrecStart, // >=
-  LessThan           = 63 | IsBinaryOp | IsExpressionStart | 8 << PrecStart, // <
-  GreaterThan        = 64 | IsBinaryOp | 8 << PrecStart, // >
-  ShiftLeft          = 65 | IsBinaryOp | 9 << PrecStart, // <<
-  ShiftRight         = 66 | IsBinaryOp | 9 << PrecStart, // >>
-  LogicalShiftRight  = 67 | IsBinaryOp | 9 << PrecStart, // >>>
-  BitwiseAnd         = 68 | IsBinaryOp | 6 << PrecStart, // &
-  BitwiseOr          = 69 | IsBinaryOp | 4 << PrecStart, // |
-  BitwiseXor         = 70 | IsBinaryOp | 5 << PrecStart, // ^
+  TypeofKeyword = 43 | Reserved,
+  DeleteKeyword = 44 | Reserved,
+  VoidKeyword = 45 | Reserved,
+  Negate = 46, // !
+  Complement = 47, // ~
+  Add = 48 | (10 << PrecStart), // +
+  Subtract = 49 | (10 << PrecStart), // -
+  InKeyword = 50 | (8 << PrecStart) | Reserved,
+  InstanceofKeyword = 51 | (8 << PrecStart) | Reserved,
+  Multiply = 52 | (11 << PrecStart), // *
+  Modulo = 53 | (11 << PrecStart), // %
+  Divide = 54 | (11 << PrecStart), // /
+  Exponentiate = 55 | (12 << PrecStart), // **
+  LogicalAnd = 56 | (3 << PrecStart), // &&
+  LogicalOr = 57 | (2 << PrecStart), // ||
+  StrictEqual = 58 | (7 << PrecStart), // ===
+  StrictNotEqual = 59 | (7 << PrecStart), // !==
+  LooseEqual = 60 | (7 << PrecStart), // ==
+  LooseNotEqual = 61 | (7 << PrecStart), // !=
+  LessThanOrEqual = 62 | (8 << PrecStart), // <=
+  GreaterThanOrEqual = 63 | (8 << PrecStart), // >=
+  LessThan = 64 | (8 << PrecStart), // <
+  GreaterThan = 65 | (8 << PrecStart), // >
+  ShiftLeft = 66 | (9 << PrecStart), // <<
+  ShiftRight = 67 | (9 << PrecStart), // >>
+  LogicalShiftRight = 68 | (9 << PrecStart), // >>>
+  BitwiseAnd = 69 | (6 << PrecStart), // &
+  BitwiseOr = 70 | (4 << PrecStart), // |
+  BitwiseXor = 71 | (5 << PrecStart), // ^
+  Coalesce = 72 | (1 << PrecStart), // ?.
 
   /* Variable declaration kinds */
-  VarKeyword   = 71 | IsExpressionStart | Reserved,
-  LetKeyword   = 72 | IsExpressionStart | FutureReserved | IsIdentifier,
-  ConstKeyword = 73 | IsExpressionStart | Reserved,
+  VarKeyword = 73 | Reserved,
+  LetKeyword = 74 | FutureReserved,
+  ConstKeyword = 75 | Reserved,
 
   /* Other reserved words */
-  BreakKeyword    = 74 | Reserved,
-  CaseKeyword     = 75 | Reserved,
-  CatchKeyword    = 76 | Reserved,
-  ClassKeyword    = 77 | IsExpressionStart | Reserved,
-  ContinueKeyword = 78 | Reserved,
-  DebuggerKeyword = 79 | Reserved,
-  DefaultKeyword  = 80 | Reserved,
-  DoKeyword       = 81 | Reserved,
-  ElseKeyword     = 82 | Reserved,
-  ExportKeyword   = 83 | Reserved,
-  ExtendsKeyword  = 84 | Reserved,
-  FinallyKeyword  = 85 | Reserved,
-  ForKeyword      = 86 | Reserved,
-  FunctionKeyword = 87 | IsExpressionStart | Reserved,
-  IfKeyword       = 88 | Reserved,
-  ImportKeyword   = 89 | IsExpressionStart | Reserved,
-  NewKeyword      = 90 | IsExpressionStart | Reserved,
-  ReturnKeyword   = 91 | Reserved,
-  SuperKeyword    = 92 | IsExpressionStart | Reserved,
-  SwitchKeyword   = 93 | IsExpressionStart | Reserved,
-  ThisKeyword     = 94 | IsExpressionStart | Reserved,
-  ThrowKeyword    = 95 | IsExpressionStart | Reserved,
-  TryKeyword      = 96 | Reserved,
-  WhileKeyword    = 97 | Reserved,
-  WithKeyword     = 98 | Reserved,
+  BreakKeyword = 76 | Reserved,
+  CaseKeyword = 77 | Reserved,
+  CatchKeyword = 78 | Reserved,
+  ClassKeyword = 79 | Reserved,
+  ContinueKeyword = 80 | Reserved,
+  DebuggerKeyword = 81 | Reserved,
+  DefaultKeyword = 82 | Reserved,
+  DoKeyword = 83 | Reserved,
+  ElseKeyword = 84 | Reserved,
+  ExportKeyword = 85 | Reserved,
+  ExtendsKeyword = 86 | Reserved,
+  FinallyKeyword = 87 | Reserved,
+  ForKeyword = 88 | Reserved,
+  FunctionKeyword = 89 | Reserved,
+  IfKeyword = 90 | Reserved,
+  ImportKeyword = 91 | Reserved,
+  NewKeyword = 92 | Reserved,
+  ReturnKeyword = 93 | Reserved,
+  SuperKeyword = 94 | Reserved,
+  SwitchKeyword = 95 | Reserved,
+  ThisKeyword = 96 | Reserved,
+  ThrowKeyword = 97 | Reserved,
+  TryKeyword = 98 | Reserved,
+  WhileKeyword = 99 | Reserved,
+  WithKeyword = 100 | Reserved,
 
   /* Strict mode reserved words */
-  ImplementsKeyword = 99 | FutureReserved,
-  InterfaceKeyword  = 100 | FutureReserved,
-  PackageKeyword    = 101 | FutureReserved,
-  PrivateKeyword    = 102 | FutureReserved,
-  ProtectedKeyword  = 103 | FutureReserved,
-  PublicKeyword     = 104 | FutureReserved,
-  StaticKeyword     = 105 | FutureReserved,
-  YieldKeyword      = 106 | FutureReserved | IsExpressionStart | IsIdentifier,
+  ImplementsKeyword = 101 | FutureReserved,
+  InterfaceKeyword = 102 | FutureReserved,
+  PackageKeyword = 103 | FutureReserved,
+  PrivateKeyword = 104 | FutureReserved,
+  ProtectedKeyword = 105 | FutureReserved,
+  PublicKeyword = 106 | FutureReserved,
+  StaticKeyword = 107 | FutureReserved,
+  YieldKeyword = 108 | FutureReserved,
 
   /* Contextual keywords */
-  AsKeyword          = 107 | Contextual,
-  AsyncKeyword       = 108 | Contextual | IsIdentifier,
-  AwaitKeyword       = 109 | Contextual | IsExpressionStart | IsIdentifier,
-  ConstructorKeyword = 110 | Contextual,
-  GetKeyword         = 111 | Contextual,
-  SetKeyword         = 112 | Contextual,
-  FromKeyword        = 113 | Contextual,
-  OfKeyword          = 114 | Contextual | IsInOrOf,
-  EnumKeyword        = 115 | Reserved,
+  AsKeyword = 109 | Contextual,
+  AsyncKeyword = 110 | Contextual,
+  AwaitKeyword = 111 | Contextual,
+  ConstructorKeyword = 112 | Contextual,
+  GetKeyword = 113 | Contextual,
+  SetKeyword = 114 | Contextual,
+  FromKeyword = 115 | Contextual,
+  OfKeyword = 116 | Contextual,
 
-  Eval               = 116 | IsEvalOrArguments,
-  Arguments          = 117 | IsEvalOrArguments,
+  /* Others */
+  WhiteSpace = 117,
+  CarriageReturn = 118,
+  LineFeed = 119,
+  LeadingZero = 120,
+  Error = 121,
+  PrivateField = 122,
+  BigIntLiteral = 123,
+  EnumKeyword = 124,
+  UnicodeEscapeIdStart = 125,
 
-  EscapedReserved       = 118,
-  EscapedFutureReserved = 119,
-  AnyIdentifier      = 120 | IsIdentifier,
+  /* Template */
 
-  // Stage #3 proposals
-  PrivateName        = 121,
-  BigIntLiteral      = 122,
-  Coalesce           = 123 | IsBinaryOp | IsCoalesc | 1 << PrecStart, // ??
-  QuestionMarkPeriod = 124 | IsMemberOrCallExpression, // ?.
-
-  // Others
-  WhiteSpace        = 125,
-  Illegal           = 126,
-  CarriageReturn    = 127,
-  PrivateField      = 128,
-  Template          = 129,
-  Decorator         = 130,
-  Target            = 131 | IsIdentifier,
-  Meta              = 132 | IsIdentifier,
-  LineFeed          = 133,
-  EscapedIdentifier = 134,
-
-  // JSX
-  JSXText           = 135,
+  TemplateHead = 126,
+  TemplateMiddle = 127,
+  NoSubstitutionTemplateLiteral = 128
 }
 
+// Note: this *must* be kept in sync with the enum's order.
+//
+// It exploits the enum value ordering, and it's necessarily a complete and
+// utter hack.
+//
+// All to lower it to a single monomorphic array access.
 export const KeywordDescTable = [
   'end of source',
 
   /* Constants/Bindings */
-  'identifier', 'number', 'string', 'regular expression',
-  'false', 'true', 'null',
+  'identifier',
+  'number',
+  'string',
+  'regular expression',
+  'false',
+  'true',
+  'null',
 
   /* Template nodes */
-  'template continuation', 'template tail',
+  'template continuation',
+  'template end',
 
   /* Punctuators */
-  '=>', '(', '{', '.', '...', '}', ')', ';', ',', '[', ']', ':', '?', '\'', '"', '</', '/>',
+  '=>',
+  '(',
+  '{',
+  '.',
+  '...',
+  '}',
+  ')',
+  ';',
+  ',',
+  '[',
+  ']',
+  ':',
+  '?',
+  "'",
+  '"',
+  '</',
+  '/>',
 
   /* Update operators */
-  '++', '--',
+  '++',
+  '--',
 
   /* Assign operators */
-  '=', '<<=', '>>=', '>>>=', '**=', '+=', '-=', '*=', '/=', '%=', '^=', '|=',
+  '=',
+  '<<=',
+  '>>=',
+  '>>>=',
+  '**=',
+  '+=',
+  '-=',
+  '*=',
+  '/=',
+  '%=',
+  '^=',
+  '|=',
   '&=',
 
   /* Unary/binary operators */
-  'typeof', 'delete', 'void', '!', '~', '+', '-', 'in', 'instanceof', '*', '%', '/', '**', '&&',
-  '||', '===', '!==', '==', '!=', '<=', '>=', '<', '>', '<<', '>>', '>>>', '&', '|', '^',
+  'typeof',
+  'delete',
+  'void',
+  '!',
+  '~',
+  '+',
+  '-',
+  'in',
+  'instanceof',
+  '*',
+  '%',
+  '/',
+  '**',
+  '&&',
+  '||',
+  '===',
+  '!==',
+  '==',
+  '!=',
+  '<=',
+  '>=',
+  '<',
+  '>',
+  '<<',
+  '>>',
+  '>>>',
+  '&',
+  '|',
+  '^',
 
   /* Variable declaration kinds */
-  'var', 'let', 'const',
+  'var',
+  'let',
+  'const',
 
   /* Other reserved words */
-  'break', 'case', 'catch', 'class', 'continue', 'debugger', 'default', 'do', 'else', 'export',
-  'extends', 'finally', 'for', 'function', 'if', 'import', 'new', 'return', 'super', 'switch',
-  'this', 'throw', 'try', 'while', 'with',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'continue',
+  'debugger',
+  'default',
+  'do',
+  'else',
+  'export',
+  'extends',
+  'finally',
+  'for',
+  'function',
+  'if',
+  'import',
+  'new',
+  'return',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'try',
+  'while',
+  'with',
 
   /* Strict mode reserved words */
-  'implements', 'interface', 'package', 'private', 'protected', 'public', 'static', 'yield',
+  'implements',
+  'interface',
+  'package',
+  'private',
+  'protected',
+  'public',
+  'static',
+  'yield',
 
   /* Contextual keywords */
-  'as', 'async', 'await', 'constructor', 'get', 'set', 'from', 'of',
+  'as',
+  'async',
+  'await',
+  'constructor',
+  'get',
+  'set',
+  'from',
+  'of',
 
   /* Others */
-  'enum', 'eval', 'arguments', 'escaped keyword', 'escaped future reserved keyword', 'reserved if strict', '#',
 
-  'BigIntLiteral', '??', '?.', 'WhiteSpace', 'Illegal', 'LineTerminator', 'PrivateField',
-
-  'Template', '@', 'target', 'meta', 'LineFeed', 'Escaped', 'JSXText'
+  'Whitespace',
+  'CarriageReturn',
+  'LineFeed',
+  'LeadingZero',
+  'Error',
+  '#',
+  'bigInt',
+  'enum',
+  'UnicodeEscapeIdStart'
 ];
 
 // Normal object is much faster than Object.create(null), even with typeof check to avoid Object.prototype interference
@@ -296,9 +402,5 @@ export const descKeywordTable: { [key: string]: Token } = Object.create(null, {
   with: { value: Token.WithKeyword },
   yield: { value: Token.YieldKeyword },
   enum: { value: Token.EnumKeyword },
-  eval: { value: Token.Eval },
-  as: { value: Token.AsKeyword },
-  arguments: { value: Token.Arguments },
-  target: { value: Token.Target },
-  meta: { value: Token.Meta },
+  as: { value: Token.AsKeyword }
 });
