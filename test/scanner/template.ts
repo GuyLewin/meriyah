@@ -16,7 +16,7 @@ describe('Scanner - Template', () => {
     [Context.Empty, Token.NoSubstitutionTemplateLiteral, '`℘`', '℘'],
     [Context.Empty, Token.NoSubstitutionTemplateLiteral, '`a᧚`', 'a᧚'],
     [Context.Empty, Token.NoSubstitutionTemplateLiteral, '`foo\\tbar`', 'foo\tbar'],
-    //[Context.Empty, Token.NoSubstitutionTemplateLiteral, '`\\x55a`', 'U'],
+    [Context.Empty, Token.NoSubstitutionTemplateLiteral, '`\\x55a`', 'Ua'],
     [Context.Empty, Token.NoSubstitutionTemplateLiteral, '`a\\nb`', 'a\nb'],
     [Context.Empty, Token.NoSubstitutionTemplateLiteral, '`;`', ';'],
     [Context.Empty, Token.NoSubstitutionTemplateLiteral, '``', ''],

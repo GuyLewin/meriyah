@@ -14,7 +14,7 @@ export interface Options {
   raw?: boolean;
 }
 
-function parseRoot(source: string, options: Options | void, context: Context): ESTree.Program {
+export function parseSource(source: string, options: Options | void, context: Context): ESTree.Program {
   let onComment: CommentCallback;
   let onError: ErrorCallback;
 
@@ -48,12 +48,12 @@ function parseRoot(source: string, options: Options | void, context: Context): E
  * Parse a script, optionally with various options.
  */
 export function parseScript(source: string, options?: Options) {
-  return parseRoot(source, options, Context.Empty);
+  return parseSource(source, options, Context.Empty);
 }
 
 /**
  * Parse a module, optionally with various options.
  */
 export function parseModule(source: string, options?: Options) {
-  return parseRoot(source, options, Context.Strict | Context.Module);
+  return parseSource(source, options, Context.Strict | Context.Module);
 }

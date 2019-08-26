@@ -29,6 +29,14 @@ describe('Scanner - Identifier (recovery)', () => {
 
     // String literal
     ['Unterminated string literal', '"Unterminated string'],
+    ['Unterminated string literal', '"\\"'],
+    ['Invalid hexadecimal escape sequence', '"\\xx55a"'],
+    ['Invalid hexadecimal escape sequence', '"\\u{10ffff"'],
+    ['Invalid hexadecimal escape sequence', '"\\u0!062"'],
+    ['Escapes \\8 or \\9 are not syntactically valid escapes', '"\\1'],
+    ['Escapes \\8 or \\9 are not syntactically valid escapes', '"\\999998"'],
+    ['Escapes \\8 or \\9 are not syntactically valid escapes', '"\\8"'],
+    ['Escapes \\8 or \\9 are not syntactically valid escapes', '"\\9"'],
 
     // Identifiers
     ['Invalid character', '፰'],

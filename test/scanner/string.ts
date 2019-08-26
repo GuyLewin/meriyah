@@ -61,6 +61,7 @@ describe('Scanner - String', () => {
     [Context.Empty, '"\\u0041"', 'A'],
     [Context.Empty, '"\\uf2ff"', ''],
     [Context.Empty, '"\\u0123"', 'ģ'],
+    [Context.Empty, '"\\x55a"', 'Ua'],
     [Context.Empty, '"\\u0123 postfix"', 'ģ postfix'],
     [Context.Empty, '"\\u{89abc}"', 'Ȧʼ'],
     [Context.Empty, '"\\u{CDEF}"', '췯'],

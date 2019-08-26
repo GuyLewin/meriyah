@@ -30,13 +30,25 @@ export function parseStatementList(parser: ParserState, context: Context): any {
   const statements: any[] = [];
   nextToken(parser, context);
   while (parser.token !== Token.EndOfSource) {
-    statements.push(parseStatement(parser, context));
+    statements.push(parseStatementListItem(parser, context));
   }
   return statements;
 }
 
+export function parseStatementListItem(parser: ParserState, context: Context): any {
+  switch (parser.token) {
+    case Token.FunctionKeyword:
+      return parseFunctionDeclaration(parser, context);
+  }
+  return parseStatement(parser, context);
+}
+
 export function parseStatement(parser: ParserState, context: Context): any {
   return parsePrimaryExpression(parser, context);
+}
+
+export function parseFunctionDeclaration(parser: ParserState, context: Context): any {
+  nextToken(parser, context);
 }
 
 export function parsePrimaryExpression(parser: ParserState, context: Context): any {

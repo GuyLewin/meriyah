@@ -21,22 +21,17 @@ export function parseStringLiteral(parser: ParserState, context: Context, quote:
   let start = parser.index;
 
   while ((CharTypes[parser.nextCodePoint] & CharFlags.IsWhiteSpaceOrLineTerminator) === 0) {
-    if (parser.index >= parser.length) {
-      res += parser.source.substring(start, parser.index);
-      break;
-    }
-
     const ch = parser.nextCodePoint;
 
     if (ch === quote) {
-      res += parser.source.substring(start, parser.index);
+      res += parser.source.slice(start, parser.index);
       advance(parser);
       parser.tokenValue = res;
       return Token.StringLiteral;
     }
 
     if (ch === Chars.Backslash) {
-      res += parser.source.substring(start, parser.index);
+      res += parser.source.slice(start, parser.index);
       advance(parser);
       if (parser.index >= parser.length) {
         report(parser, context, Errors.UnterminatedString);
@@ -47,40 +42,45 @@ export function parseStringLiteral(parser: ParserState, context: Context, quote:
         res += fromCodePoint(code);
         start = parser.index;
       } else {
-        handleStringError(parser, context, code as Escape, /* isTemplate */ 0);
-        return Token.Error;
+        return handleStringError(parser, context, code as Escape, /* isTemplate */ 0);
       }
 
       continue;
     }
     advance(parser);
-  }
 
-  parser.tokenValue = res;
+    if (parser.index >= parser.length) return Token.Error;
+  }
 
   report(parser, context, Errors.UnterminatedString);
 
   return Token.Error;
 }
-export function handleStringError(state: ParserState, context: Context, code: Escape, isTemplate: 0 | 1): void {
+export function handleStringError(state: ParserState, context: Context, code: Escape, isTemplate: 0 | 1): Token {
   switch (code) {
     case Escape.Empty:
-      return;
+      break;
 
     case Escape.StrictOctal:
       report(state, context, isTemplate ? Errors.TemplateOctalLiteral : Errors.StrictOctalEscape);
+      break;
 
     case Escape.EightOrNine:
       report(state, context, Errors.InvalidEightAndNine);
+      break;
 
     case Escape.InvalidHex:
       report(state, context, Errors.InvalidHexEscapeSequence);
+      break;
 
     case Escape.OutOfRange:
       report(state, context, Errors.UnicodeOverflow);
+      break;
 
     default: // ignore
   }
+
+  return Token.Error;
 }
 export function scanEscape(parser: ParserState, context: Context): number {
   const ch = parser.nextCodePoint;
@@ -199,7 +199,7 @@ export function parseTemplate(parser: ParserState, context: Context, startedWith
   while (parser.index < parser.length) {
     if (parser.index >= parser.length) {
       contents += parser.source.substring(start, parser.index);
-      report(parser, context, Errors.UnterminatedString);
+      report(parser, context, Errors.UnterminatedTemplate);
       return startedWithBacktick ? Token.NoSubstitutionTemplateLiteral : Token.TemplateTail;
     }
 
@@ -233,15 +233,15 @@ export function parseTemplate(parser: ParserState, context: Context, startedWith
       contents += parser.source.substring(start, parser.index);
       advance(parser);
       if (parser.index >= parser.length) {
-        report(parser, context, Errors.UnterminatedString);
+        report(parser, context, Errors.UnterminatedTemplate);
         return Token.Error;
       }
-      const code = scanEscape(parser, context);
+      const code = scanEscape(parser, context | Context.Strict);
       if (code >= 0) {
         contents += fromCodePoint(code);
         start = parser.index;
       } else {
-        handleStringError(parser, context, code as Escape, /* isTemplate */ 0);
+        handleStringError(parser, context, code as Escape, /* isTemplate */ 1);
         badEscapes = 1;
       }
 
