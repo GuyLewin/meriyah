@@ -231,15 +231,20 @@ export function parseTemplate(parser: ParserState, context: Context, startedWith
     // Escape character
     if (currChar === Chars.Backslash) {
       contents += parser.source.substring(start, parser.index);
+      advance(parser);
+      if (parser.index >= parser.length) {
+        report(parser, context, Errors.UnterminatedString);
+        return Token.Error;
+      }
       const code = scanEscape(parser, context);
       if (code >= 0) {
         contents += fromCodePoint(code);
+        start = parser.index;
       } else {
         handleStringError(parser, context, code as Escape, /* isTemplate */ 0);
         badEscapes = 1;
       }
 
-      start = parser.index;
       continue;
     }
 
