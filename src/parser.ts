@@ -1,6 +1,8 @@
 import { Context, Flags, CommentCallback, ErrorCallback, ParserState } from './common';
-import { Token } from './token';
+import { Token, KeywordDescTable } from './token';
 import { nextToken } from './scanner/scan';
+import { expect } from './common';
+import { Errors, report } from './errors';
 
 /**
  * Create a new parser instance.
@@ -49,18 +51,27 @@ export function parseStatement(parser: ParserState, context: Context): any {
 
 export function parseFunctionDeclaration(parser: ParserState, context: Context): any {
   nextToken(parser, context);
+  expect(parser, context, Token.LeftParen);
+  expect(parser, context, Token.RightParen);
+  expect(parser, context, Token.LeftBrace);
+  expect(parser, context, Token.RightBrace);
 }
 
 export function parsePrimaryExpression(parser: ParserState, context: Context): any {
   switch (parser.token) {
     case Token.Error:
+      report(parser, context, Errors.Unexpected);
       nextToken(parser, context);
-    default:
+
+    case Token.Identifier:
       const { tokenValue } = parser;
       nextToken(parser, context);
       return {
         type: 'Identifier',
         value: tokenValue
       };
+    default:
+      report(parser, context, Errors.UnexpectedToken, KeywordDescTable[parser.token & Token.Type]);
+      nextToken(parser, context);
   }
 }

@@ -3,6 +3,8 @@ import { Context, ParserState } from './common';
 /*@internal*/
 export const enum Errors {
   Unexpected,
+  UnexpectedToken,
+  Expected,
   InvalidCharacter,
   StrictOctalLiteral,
   InvalidHexEscapeSequence,
@@ -30,6 +32,8 @@ export const errorMessages: {
   [key: string]: string;
 } = {
   [Errors.Unexpected]: 'Unexpected',
+  [Errors.UnexpectedToken]: 'Unexpected token %0',
+  [Errors.Expected]: 'Expected %0',
   [Errors.InvalidCharacter]: 'Invalid character',
   [Errors.StrictOctalLiteral]: 'Octal literals are not allowed in strict mode',
   [Errors.InvalidHexEscapeSequence]: 'Invalid hexadecimal escape sequence',

@@ -1,5 +1,8 @@
 import { Comment } from './estree';
-import { Token } from './token';
+import { Token, KeywordDescTable } from './token';
+import { nextToken } from './scanner/scan';
+import { Errors, report } from './errors';
+
 /**
  * The core context, passed around everywhere as a simple immutable bit set.
  */
@@ -62,4 +65,13 @@ export interface ParserState {
 
   // For the scanner to work around lack of multiple return.
   nextCodePoint: number;
+}
+
+export function expect(parser: ParserState, context: Context, t: Token) {
+  if (parser.token === t) {
+    nextToken(parser, context);
+    return true;
+}
+report(parser, context, Errors.Expected, KeywordDescTable[t & Token.Type]);
+return false;
 }
