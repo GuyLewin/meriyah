@@ -26,7 +26,8 @@ export const enum Errors {
   UnexpectedTokenRegExpFlag,
   UnterminatedRegExp,
   RestricedLetProduction,
-  InvalidCoalescing
+  InvalidCoalescing,
+  InvalidBigIntLiteral
 }
 
 /*@internal*/
@@ -56,6 +57,7 @@ export const errorMessages: {
   [Errors.DuplicateRegExpFlag]: "Duplicate regular expression flag '%0'",
   [Errors.UnexpectedTokenRegExpFlag]: 'Unexpected regular expression flag',
   [Errors.UnterminatedRegExp]: 'Unterminated regular expression',
+  [Errors.InvalidBigIntLiteral]: 'Invalid BigIntLiteral',
   [Errors.RestricedLetProduction]: '`let \n [` is a restricted production at the start of a statement',
   [Errors.InvalidCoalescing]:
     'Coalescing and logical operators used together in the same expression must be disambiguated with parentheses'

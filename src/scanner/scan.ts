@@ -11,6 +11,7 @@ import { skipSingleLineComment, parseCommentMulti } from './comments';
 import { isIDStart } from './unicode';
 import { handleIdentifierError } from './recovery';
 import { scanRegularExpression } from './regexp';
+import { isDecimal } from './lookup';
 
 export const tokenStartTable = [
   /*   0 - Null               */ Token.Error,
@@ -207,13 +208,13 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           if (next === Chars.LowerO) {
             return scanLeadingZero(parser, context, 0x8, CharFlags.Octal, /* isHex */ 0);
           }
-          if (CharTypes[next] & CharFlags.Decimal) {
+          if (isDecimal[next]) {
             let value: number = 0;
 
             // Octal integer literals are not permitted in strict mode code
             if (context & Context.Strict) report(parser, context, Errors.StrictOctalEscape);
 
-            while (CharTypes[next] & CharFlags.Decimal) {
+            while (isDecimal[next]) {
               if (next >= Chars.Eight) {
                 nonOctalDecimalInteger = 1;
                 break;
@@ -300,7 +301,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           }
           if (parser.nextCodePoint === Chars.Period) {
             // Check that it's not followed by any numbers
-            if ((CharTypes[parser.source.charCodeAt(parser.index + 1)] & CharFlags.Decimal) < 1) {
+            if (!isDecimal[parser.source.charCodeAt(parser.index + 1)]) {
               advance(parser);
               return Token.QuestionMarkPeriod;
             }

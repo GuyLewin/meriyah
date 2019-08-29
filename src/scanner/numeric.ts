@@ -4,6 +4,7 @@ import { Chars } from '../chars';
 import { ParserState, Context } from '../common';
 import { advance, toHex } from './common';
 import { report, Errors } from '../errors';
+import { isDecimal, isDecimalOrUnderscore } from './lookup';
 
 export function scanNumber(
   parser: ParserState,
@@ -17,16 +18,14 @@ export function scanNumber(
 
   if (isFloat) {
     decimalValue = scanDecimalDigits(parser, context, char);
-
     if (decimalValue < 0) return Token.Error;
     value = '.' + decimalValue;
-    char = parser.nextCodePoint;
   } else {
     let digit = 9;
     let allowSeparator: 0 | 1 = 0;
 
     if (nonOctalDecimalInteger === 0) {
-      while (digit >= 0 && CharTypes[char] & (CharFlags.Decimal | CharFlags.Underscore)) {
+      while (digit >= 0 && isDecimalOrUnderscore[char]) {
         if (char === Chars.Underscore) {
           char = advance(parser);
           if (char === Chars.Underscore) {
@@ -36,9 +35,13 @@ export function scanNumber(
           allowSeparator = 1;
           continue;
         }
+
         allowSeparator = 0;
+
         value = 10 * (value as number) + (char - Chars.Zero);
+
         char = advance(parser);
+
         --digit;
       }
 
@@ -47,12 +50,11 @@ export function scanNumber(
         return Token.Error;
       }
 
-      if (digit >= 0 && !isIdentifierStart(char) && char !== Chars.Period) {
+      if (digit >= 0 && char !== Chars.Period && !isIdentifierStart(char)) {
         parser.tokenValue = value;
         return Token.NumericLiteral;
       }
     }
-    parser.nextCodePoint = char;
 
     decimalValue = scanDecimalDigits(parser, context, char);
 
@@ -73,16 +75,18 @@ export function scanNumber(
 
       value += '.' + decimalValue;
 
-      char = parser.nextCodePoint;
-
       isFloat = 1;
     }
   }
 
+  char = parser.nextCodePoint;
+
   const { index: end } = parser;
+
   let isBigInt: 0 | 1 = 0;
+
   if (char === Chars.LowerN) {
-    if (isFloat || nonOctalDecimalInteger) report(parser, context, Errors.Unexpected);
+    if (isFloat || nonOctalDecimalInteger) report(parser, context, Errors.InvalidBigIntLiteral);
     char = advance(parser);
   } else if ((char | 32) == Chars.LowerE) {
     char = advance(parser);
@@ -92,7 +96,7 @@ export function scanNumber(
     const { index } = parser;
 
     // Exponential notation must contain at least one digit
-    if ((CharTypes[char] & CharFlags.Decimal) < 1) {
+    if (!isDecimal[char]) {
       report(parser, context, Errors.MissingExponent);
       return Token.Error;
     }
@@ -109,7 +113,7 @@ export function scanNumber(
 
   // The source character immediately following a numeric literal must
   // not be an identifier start or a decimal digit
-  if ((parser.index < parser.length && CharTypes[char] & CharFlags.Decimal) || isIdentifierStart(char)) {
+  if ((parser.index < parser.length && isDecimal[char]) || isIdentifierStart(char)) {
     report(parser, context, Errors.IDStartAfterNumber);
     return Token.Error;
   }
@@ -122,9 +126,9 @@ export function scanNumber(
 export function scanDecimalDigits(parser: ParserState, context: Context, char: number): any {
   let allowSeparator: 0 | 1 = 0;
   let start = parser.index;
-  let ret = '';
+  let value = '';
 
-  while (CharTypes[char] & (CharFlags.Decimal | CharFlags.Underscore)) {
+  while (isDecimalOrUnderscore[char]) {
     if (char === Chars.Underscore) {
       const { index } = parser;
       char = advance(parser);
@@ -133,7 +137,7 @@ export function scanDecimalDigits(parser: ParserState, context: Context, char: n
         return -1;
       }
       allowSeparator = 1;
-      ret += parser.source.substring(start, index);
+      value += parser.source.substring(start, index);
       start = parser.index;
       continue;
     }
@@ -145,7 +149,7 @@ export function scanDecimalDigits(parser: ParserState, context: Context, char: n
     return -1;
   }
 
-  return ret + parser.source.substring(start, parser.index);
+  return (value += parser.source.substring(start, parser.index));
 }
 
 export function scanLeadingZero(
@@ -185,6 +189,7 @@ export function scanLeadingZero(
     advance(parser);
     isBigInt = 1;
   }
+
   // The source character immediately following a numeric literal must
   // not be an identifier start or a decimal digit
   if ((parser.index < parser.length && CharTypes[char] & CharFlags.Decimal) || isIdentifierStart(char)) {
