@@ -2,100 +2,135 @@ import { CharTypes, CharFlags, isIdentifierStart } from './charClassifier';
 import { Token } from '../token';
 import { Chars } from '../chars';
 import { ParserState, Context } from '../common';
-import { advance } from './common';
+import { advance, toHex } from './common';
 import { report, Errors } from '../errors';
 
-export function scanNumber(parser: ParserState, context: Context, isFloat: 0 | 1, value: any): Token {
-  let digit = 9;
-  let allowSeparator: 0 | 1 = 0;
+export function scanNumber(
+  parser: ParserState,
+  context: Context,
+  nonOctalDecimalInteger: 0 | 1,
+  value: number | string,
+  isFloat: 0 | 1
+): Token {
+  let char = parser.nextCodePoint;
+  let decimalValue = 0;
 
   if (isFloat) {
-    value = '.' + scanDecimalDigits(parser, context);
+    decimalValue = scanDecimalDigits(parser, context, char);
+
+    if (decimalValue < 0) return Token.Error;
+    value = '.' + decimalValue;
+    char = parser.nextCodePoint;
   } else {
-    while (digit >= 0 && CharTypes[parser.nextCodePoint] & (CharFlags.Decimal | CharFlags.Underscore)) {
-      if (parser.nextCodePoint === Chars.Underscore) {
-        advance(parser);
-        if (parser.nextCodePoint === Chars.Underscore) {
-          report(parser, context, Errors.ContinuousNumericSeparator);
-          return Token.Error;
+    let digit = 9;
+    let allowSeparator: 0 | 1 = 0;
+
+    if (nonOctalDecimalInteger === 0) {
+      while (digit >= 0 && CharTypes[char] & (CharFlags.Decimal | CharFlags.Underscore)) {
+        if (char === Chars.Underscore) {
+          char = advance(parser);
+          if (char === Chars.Underscore) {
+            report(parser, context, Errors.ContinuousNumericSeparator);
+            return Token.Error;
+          }
+          allowSeparator = 1;
+          continue;
         }
-        allowSeparator = 1;
-        continue;
+        allowSeparator = 0;
+        value = 10 * (value as number) + (char - Chars.Zero);
+        char = advance(parser);
+        --digit;
       }
-      allowSeparator = 0;
-      value = 10 * value + (parser.nextCodePoint - Chars.Zero);
-      advance(parser);
-      --digit;
+
+      if (allowSeparator) {
+        report(parser, context, Errors.TrailingNumericSeparator);
+        return Token.Error;
+      }
+
+      if (digit >= 0 && !isIdentifierStart(char) && char !== Chars.Period) {
+        parser.tokenValue = value;
+        return Token.NumericLiteral;
+      }
     }
+    parser.nextCodePoint = char;
 
-    if (allowSeparator) {
-      report(parser, context, Errors.TrailingNumericSeparator);
-      return Token.Error;
-    }
+    decimalValue = scanDecimalDigits(parser, context, char);
 
-    if (digit >= 0 && !isIdentifierStart(parser.nextCodePoint) && parser.nextCodePoint !== Chars.Period) {
-      parser.tokenValue = value;
-      return Token.NumericLiteral;
-    }
+    if (decimalValue < 0) return Token.Error;
 
-    value += scanDecimalDigits(parser, context);
+    (value as any) += decimalValue;
 
-    if (parser.nextCodePoint === Chars.Period) {
-      advance(parser);
-      value += '.' + scanDecimalDigits(parser, context);
+    char = parser.nextCodePoint;
+
+    if (char === Chars.Period) {
+      char = advance(parser);
+
+      if (char === Chars.Underscore) report(parser, context, Errors.Unexpected);
+
+      decimalValue = scanDecimalDigits(parser, context, char);
+
+      if (decimalValue < 0) return Token.Error;
+
+      value += '.' + decimalValue;
+
+      char = parser.nextCodePoint;
+
+      isFloat = 1;
     }
   }
-  const end = parser.index;
 
-  if (parser.nextCodePoint === Chars.LowerN) {
-    advance(parser);
-    parser.tokenValue = value;
-    return Token.BigIntLiteral;
-  }
-
-  if ((parser.nextCodePoint | 32) == Chars.LowerE) {
-    advance(parser);
+  const { index: end } = parser;
+  let isBigInt: 0 | 1 = 0;
+  if (char === Chars.LowerN) {
+    if (isFloat || nonOctalDecimalInteger) report(parser, context, Errors.Unexpected);
+    char = advance(parser);
+  } else if ((char | 32) == Chars.LowerE) {
+    char = advance(parser);
     // '-', '+'
-    if (CharTypes[parser.nextCodePoint] & CharFlags.Exponent) advance(parser);
+    if (CharTypes[char] & CharFlags.Exponent) char = advance(parser);
 
     const { index } = parser;
 
     // Exponential notation must contain at least one digit
-    if ((CharTypes[parser.nextCodePoint] & CharFlags.Decimal) < 1) {
+    if ((CharTypes[char] & CharFlags.Decimal) < 1) {
       report(parser, context, Errors.MissingExponent);
       return Token.Error;
     }
 
     // Consume exponential digits
-    value += parser.source.substring(end, index) + scanDecimalDigits(parser, context);
+    decimalValue = scanDecimalDigits(parser, context, char);
+
+    if (decimalValue < 0) return Token.Error;
+
+    value += parser.source.substring(end, index) + decimalValue;
+
+    char = parser.nextCodePoint;
   }
 
   // The source character immediately following a numeric literal must
   // not be an identifier start or a decimal digit
-  if (
-    (parser.index < parser.length && CharTypes[parser.nextCodePoint] & CharFlags.Decimal) ||
-    isIdentifierStart(parser.nextCodePoint)
-  ) {
+  if ((parser.index < parser.length && CharTypes[char] & CharFlags.Decimal) || isIdentifierStart(char)) {
     report(parser, context, Errors.IDStartAfterNumber);
     return Token.Error;
   }
 
-  parser.tokenValue = value;
-  return Token.NumericLiteral;
+  parser.tokenValue = nonOctalDecimalInteger ? parseFloat(parser.source.slice(parser.startPos, parser.index)) : value;
+
+  return isBigInt ? Token.BigIntLiteral : Token.NumericLiteral;
 }
 
-export function scanDecimalDigits(parser: ParserState, context: Context): any {
+export function scanDecimalDigits(parser: ParserState, context: Context, char: number): any {
   let allowSeparator: 0 | 1 = 0;
   let start = parser.index;
   let ret = '';
 
-  while (CharTypes[parser.nextCodePoint] & (CharFlags.Decimal | CharFlags.Underscore)) {
-    if (parser.nextCodePoint === Chars.Underscore) {
+  while (CharTypes[char] & (CharFlags.Decimal | CharFlags.Underscore)) {
+    if (char === Chars.Underscore) {
       const { index } = parser;
-      advance(parser);
-      if (parser.nextCodePoint === Chars.Underscore) {
+      char = advance(parser);
+      if (char === Chars.Underscore) {
         report(parser, context, Errors.ContinuousNumericSeparator);
-        return Token.Error;
+        return -1;
       }
       allowSeparator = 1;
       ret += parser.source.substring(start, index);
@@ -103,47 +138,58 @@ export function scanDecimalDigits(parser: ParserState, context: Context): any {
       continue;
     }
     allowSeparator = 0;
-    advance(parser);
+    char = advance(parser);
   }
   if (allowSeparator) {
     report(parser, context, Errors.TrailingNumericSeparator);
-    return Token.Error;
+    return -1;
   }
+
   return ret + parser.source.substring(start, parser.index);
 }
 
-export function toHex(code: number): number {
-  return code < Chars.UpperA ? code - Chars.Zero : (code - Chars.UpperA + 10) & 0xf;
-}
-
-export function scanLeadingZero(parser: ParserState, context: Context, radix: number, c: CharFlags, isHex: 0 | 1) {
+export function scanLeadingZero(
+  parser: ParserState,
+  context: Context,
+  radix: number,
+  radixFlags: CharFlags,
+  isHex: 0 | 1
+) {
   let value = 0;
   let digits = 0;
   let allowSeparator = 0;
-  advance(parser);
-  while (CharTypes[parser.nextCodePoint] & (c | CharFlags.Underscore)) {
-    if (parser.nextCodePoint === Chars.Underscore) {
+  let char = advance(parser);
+  while (CharTypes[char] & (radixFlags | CharFlags.Underscore)) {
+    if (char === Chars.Underscore) {
       if (!allowSeparator) {
         report(parser, context, Errors.ContinuousNumericSeparator);
         return Token.Error;
       }
       allowSeparator = 0;
-      advance(parser);
+      char = advance(parser);
       continue;
     }
     allowSeparator = 1;
-    value = isHex ? value * radix + toHex(parser.nextCodePoint) : value * radix + (parser.nextCodePoint - Chars.Zero);
+    value = isHex ? value * radix + toHex(char) : value * radix + (char - Chars.Zero);
     digits++;
-    advance(parser);
+    char = advance(parser);
   }
   if (digits < 1 || !allowSeparator) {
     report(parser, context, Errors.TrailingNumericSeparator);
     return Token.Error;
   }
   parser.tokenValue = value;
-  if (parser.nextCodePoint === Chars.LowerN) {
+  let isBigInt: 0 | 1 = 0;
+
+  if (char === Chars.LowerN) {
     advance(parser);
-    return Token.BigIntLiteral;
+    isBigInt = 1;
   }
-  return Token.NumericLiteral;
+  // The source character immediately following a numeric literal must
+  // not be an identifier start or a decimal digit
+  if ((parser.index < parser.length && CharTypes[char] & CharFlags.Decimal) || isIdentifierStart(char)) {
+    report(parser, context, Errors.IDStartAfterNumber);
+    return Token.Error;
+  }
+  return isBigInt ? Token.BigIntLiteral : Token.NumericLiteral;
 }

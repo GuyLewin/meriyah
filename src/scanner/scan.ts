@@ -144,7 +144,7 @@ export const tokenStartTable = [
 ];
 
 export function scanSingleToken(parser: ParserState, context: Context): Token {
-  let token: Token = Token.EndOfSource;
+  let nonOctalDecimalInteger: 0 | 1 = 0;
 
   while (parser.index < parser.length) {
     parser.tokenPos = parser.index;
@@ -152,7 +152,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
     const char = parser.nextCodePoint;
 
     if (char <= 0x7e) {
-      token = tokenStartTable[char];
+      const token = tokenStartTable[char];
 
       switch (token) {
         case Token.RightBrace:
@@ -209,11 +209,13 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           }
           if (CharTypes[next] & CharFlags.Decimal) {
             let value: number = 0;
-            let nonOctalDecimalIntegerLiteral: 0 | 1 = 0;
+
+            // Octal integer literals are not permitted in strict mode code
+            if (context & Context.Strict) report(parser, context, Errors.StrictOctalEscape);
 
             while (CharTypes[next] & CharFlags.Decimal) {
               if (next >= Chars.Eight) {
-                nonOctalDecimalIntegerLiteral = 1;
+                nonOctalDecimalInteger = 1;
                 break;
               }
               value = value * 8 + (next - Chars.Zero);
@@ -231,22 +233,21 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
               return Token.Error;
             }
 
-            if (!nonOctalDecimalIntegerLiteral) {
+            if (!nonOctalDecimalInteger) {
               parser.tokenValue = value;
               return Token.NumericLiteral;
             }
-            return scanNumber(parser, context, 1, value);
           }
         }
 
         case Token.NumericLiteral:
-          return scanNumber(parser, context, /* nonOctalDecimalIntegerLiteral */ 0, /* value */ 0);
+          return scanNumber(parser, context, nonOctalDecimalInteger, /* value */ 0, 0);
 
         // `.`, `...`, `.123` (numeric literal)
         case Token.Period:
           advance(parser);
           if ((CharTypes[parser.nextCodePoint] & CharFlags.Decimal) !== 0)
-            return scanNumber(parser, context, /* nonOctalDecimalIntegerLiteral */ 1, /* value */ 0);
+            return scanNumber(parser, context, /* nonOctalDecimalInteger */ 1, /* value */ 0, 1);
           if (parser.nextCodePoint === Chars.Period) {
             advance(parser);
             if (parser.nextCodePoint === Chars.Period) {
@@ -536,7 +537,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
     return Token.Error;
   }
 
-  return token;
+  return Token.EndOfSource;
 }
 
 /**
