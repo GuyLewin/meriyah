@@ -4,7 +4,7 @@ import { create } from '../../src/parser';
 import { scanSingleToken } from '../../src/scanner/scan';
 
 describe('Scanner - String', () => {
-  const tokens: Array<[Context, any, any]> = [
+  const tokens: Array<[Context, string, string]> = [
     [Context.Empty, '"a"', 'a'],
     [Context.Empty, '"foo"', 'foo'],
     [Context.Empty, '"foo "', 'foo '],
@@ -13,12 +13,19 @@ describe('Scanner - String', () => {
     [Context.Empty, '"دیوانه"', 'دیوانه'],
     [Context.Empty, '"a℮"', 'a℮'],
     [Context.Empty, '"℘"', '℘'],
+    [Context.Empty, '"\\u{0000}"', '\u0000'],
     [Context.Empty, '"a᧚"', 'a᧚'],
+    [Context.Empty, '"a\\n"', 'a\n'],
+    [Context.Empty, '"\\10ffff"', '\bffff'],
+    [Context.Empty, '"{10ffff"', '{10ffff'],
+    [Context.Empty, '"a\\n"', 'a\n'],
     [Context.Empty, '"a\\n"', 'a\n'],
     [Context.Empty, '"foo\\tbar"', 'foo\tbar'],
     [Context.Empty, '"\\u0001"', '\u0001'],
+    [Context.Empty, '"\\u1100033"', 'ᄀ033'],
     [Context.Empty, '"\\x55"', 'U'],
     [Context.Empty, '"\\x55a"', 'Ua'],
+    [Context.Empty, '"a\\x55"', 'aU'],
     [Context.Empty, '"a\\nb"', 'a\nb'],
     [Context.Empty, '";"', ';'],
     [Context.Empty, '"\\r"', '\r'],
@@ -128,7 +135,7 @@ describe('Scanner - String', () => {
     [Context.Empty, '"\\302"', 'Â'],
     [Context.Empty, '"\\000"', '\u0000'],
     [Context.Empty, '"\\104"', 'D'],
-    [Context.Empty, '"\\221"', '']
+    [Context.OptionsRaw, '"\\221"', '']
   ];
 
   for (const [ctx, op, value] of tokens) {
@@ -165,4 +172,82 @@ describe('Scanner - String', () => {
       );
     });
   }
+
+  function fail(name: string, source: string, context: Context) {
+    it(name, () => {
+      const state = create(source);
+      t.throws(() => scanSingleToken(state, context));
+    });
+  }
+
+  fail('fails on "\n"', '"\\r\\n', Context.Empty);
+  fail('fails on "\n"', '"a\\r\\n', Context.Empty);
+  //fail('fails on "\n"', '"a\\r\\n"', Context.Empty);
+  fail('fails on "\\9999"', '"\\9999"', Context.Empty);
+  fail('fails on "\\08"', '"\\08"', Context.Strict);
+  fail('fails on "\\1"', '"\\1"', Context.Strict);
+  fail('fails on "foo', '"foo', Context.Empty);
+  fail('fails on "foo', '"foo', Context.Empty);
+  fail('fails on "\\u{1F_639}"', '"\\u{1F_639}"', Context.OptionsNext);
+  fail('fails on "\\u007Xvwxyz"', '"\\u007Xvwxyz"', Context.OptionsNext);
+  fail('fails on "abc\\u{}"', '"abc\\u{}"', Context.OptionsNext);
+  fail('fails on "abc\\u}"', '"abc\\u}"', Context.OptionsNext);
+  fail('fails on "abc\\u{', '"abc\\u{"', Context.OptionsNext);
+  fail('fails on "\\u{70bc"', '"\\u{70bc"', Context.OptionsNext);
+  fail('fails on "\\u{70"', '"\\u{70"', Context.OptionsNext);
+  fail('fails on "\\u{!"', '"\\u{!"', Context.Empty);
+  fail('fails on "\\u"', '"\\u"', Context.Empty);
+  fail('fails on "\\8"', '"\\8"', Context.Empty);
+  fail('fails on "\\9', '"\\9"', Context.Empty);
+  fail('fails on "\\"', '"\\"', Context.Empty);
+  fail('fails on "\\u{10401"', '"\\u{10401"', Context.Empty);
+  fail('fails on "\\u{110000}"', '"\\u{110000}"', Context.Empty);
+  fail('fails on "\\u0x11ffff"', '"\\u0x11ffff"', Context.Empty);
+  fail('fails on "\\xCq"', '"\\xCq"', Context.Empty);
+  fail('fails on "\\x"', '"\\x"', Context.Empty);
+  fail('fails on "\\xb"', '"\\xb"', Context.Empty);
+  fail('fails on "\\uxxxxλ"', '"\\uxxxxλ"', Context.Empty);
+  fail('fails on "\\u0fail"', '"\\u0fail"', Context.Empty);
+  fail('fails on "\\uab"', '"\\uab"', Context.Empty);
+  fail('fails on "\\uab"', '"\\uab"', Context.Empty);
+  fail('fails on "\\u{0fail}"', '"\\u{0fail}"', Context.Empty);
+  fail('fails on "\\u{xxxx}"', '"\\u{xxxx}"', Context.Empty);
+  fail('fails on "\\u{12345"', '"\\u{12345"', Context.Empty);
+  fail('fails on "\\u{123"', '"\\u{123"', Context.Empty);
+  fail('fails on "\\u{110000}"', '"\\u{110000}"', Context.Empty);
+  fail('fails on "\\u{00000000000000000000110000}"', '"\\u{00000000000000000000110000}"', Context.Empty);
+  fail('fails on "\\7"', '"\\7"', Context.Strict);
+  fail('fails on "\\7\\\n"', '"\\7\\\n"', Context.Strict);
+  fail('fails on "\\008"', '"\\008"', Context.Strict);
+  fail('fails on "\\012"', '"\\012"', Context.Strict);
+  fail('fails on "\\x4"', '"\\x4"', Context.Empty);
+  fail('fails on "\\6"', '"\\6"', Context.Strict);
+  fail('fails on "\\8"', '"\\8"', Context.Strict);
+  fail('fails on "\\9b"', '"\\9b"', Context.Strict);
+  fail('fails on "\\9b"', '"\\9b"', Context.Empty);
+  fail('fails on "\\1"', '"\\1"', Context.Strict);
+  fail('fails on "\\01"', '"\\01"', Context.Strict);
+  fail('fails on "\\21"', '"\\21"', Context.Strict);
+  fail('fails on "\\10r"', '"\\10r"', Context.Strict);
+  fail('fails on "\\21e"', '"\\21e"', Context.Strict);
+  fail('fails on "\\10"', '"\\10"', Context.Strict);
+  fail('fails on "\\012"', '"\\012"', Context.Strict);
+  fail('fails on "\\126"', '"\\126"', Context.Strict);
+  fail('fails on "\\324"', '"\\324"', Context.Strict);
+  fail('fails on "\\x9"', '"\\x9"', Context.Empty);
+  fail('fails on "\\xb"', '"\\xb"', Context.Empty);
+  fail('fails on "\\xf"', '"\\xf"', Context.Empty);
+  fail('fails on "\\x0"', '"\\x0"', Context.Empty);
+  fail('fails on "\\x1"', '"\\x1"', Context.Empty);
+  fail('fails on "\\xb"', '"\\xb"', Context.Empty);
+  fail('fails on "\\xF"', '"\\xF"', Context.Empty);
+  fail('fails on "\\x"', '"\\x"', Context.Empty);
+  fail('fails on "\\x"', '"\\x"', Context.Empty);
+  fail('fails on "\\x"', '"\\x"', Context.Empty);
+  fail('fails on "\\x"', '"\\x"', Context.Empty);
+  fail('fails on "\\xq7"', '"\\xq7"', Context.Empty);
+  fail('fails on "\\xqf"', '"\\xqf"', Context.Empty);
+  fail('fails on "\\xbq"', '"\\xbq"', Context.Empty);
+  fail('fails on "\\xAq"', '"\\xAq"', Context.Empty);
+  fail('fails on "\\xFq"', '"\\xFq"', Context.Empty);
 });

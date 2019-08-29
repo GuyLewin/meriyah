@@ -3,7 +3,7 @@ import { Token } from '../token';
 import { Chars } from '../chars';
 import { ParserState, Context } from '../common';
 import { scanNumber, scanLeadingZero } from './numeric';
-import { parseStringLiteral, parseTemplate } from './string';
+import { parseStringLiteral, scanTemplate } from './string';
 import { scanIdentifier, scanIdentifierUnicodeEscape, scanIdentifierSlowPath } from './identifier';
 import { advance, consumeMultiUnitCodePoint, isExoticECMAScriptWhitespace, fromCodePoint } from './common';
 import { report, Errors } from '../errors';
@@ -156,7 +156,6 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
       switch (token) {
         case Token.RightBrace:
-          if (context & Context.InTemplate) return parseTemplate(parser, context, 0);
         case Token.LeftBrace:
         case Token.Comma:
         case Token.Colon:
@@ -176,12 +175,14 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
         case Token.CarriageReturn:
           advance(parser);
+          parser.precedingLineBreak = 1;
           if (parser.index < parser.length && parser.nextCodePoint === Chars.LineFeed) {
             advance(parser);
           }
           continue;
 
         case Token.LineFeed: {
+          parser.precedingLineBreak = 1;
           advance(parser);
           continue;
         }
@@ -266,7 +267,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           return Token.Error;
 
         case Token.TemplateTail:
-          return parseTemplate(parser, context, 1);
+          return scanTemplate(parser, context);
 
         // `<`, `<=`, `<<`, `<<=`, `</`, `<!--`
         case Token.LessThan:
@@ -515,6 +516,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
       }
     }
     if ((char ^ Chars.LineSeparator) <= 1) {
+      parser.precedingLineBreak = 1;
       advance(parser);
       continue;
     }
@@ -543,7 +545,9 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
  * @param parser  Parser object
  * @param context Context masks
  */
-export function nextToken(parser: ParserState, context: Context): void {
+export function nextToken(parser: ParserState, context: Context): Token {
+  parser.precedingLineBreak = 0;
   parser.startPos = parser.index;
   parser.token = scanSingleToken(parser, context);
+  return parser.token;
 }

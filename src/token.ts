@@ -1,23 +1,3 @@
-/*
- * The tokens are laid out and packed in an unconventional way. Here's how it's
- * all laid out:
- *
- * Token enum:
- *
- * - `Type` mask, for stripping all the other constants.
- * - Attributes (e.g. literal, statement start, etc.) for simplifying boolean
- *   tests against ranges of nodes.
- * - Precedence start/mask (for binary operators)
- * - Node types, starting at 0
- *
- * Conversions: They leverage the token representation to convert the values
- * based on a static array table. They must be updated to reflect the existing
- * nodes.
- *
- * Note that there is limited space for token metadata, to maintain the 31-bit
- * size invariant in V8.
- */
-
 /**
  * The token types and attributes.
  */
@@ -30,131 +10,144 @@ export const enum Token {
 
   /* Attribute names */
   Contextual = 1 << 12,
-  Reserved = 1 << 13,
+  Keywords = 1 << 13,
   FutureReserved = 1 << 14,
-
   BadTemplate = 1 << 15,
+  Identifier = (1 << 16) | Contextual,
+  IdentifierOrKeyword = (1 << 17) | Identifier | Keywords,
+  IsExpressionStart = 1 << 18,
+  IsInOrOf = 1 << 19, // 'in' or 'of'
+  IsLogical = 1 << 20,
+  IsAutoSemicolon = 1 << 21,
+  IsPatternStart = 1 << 22, // Start of pattern, '[' or '{'
+  IsAssignOp = 1 << 23,
+  IsBinaryOp = (1 << 24) | IsExpressionStart,
+  IsUnaryOp = (1 << 25) | IsExpressionStart,
+  IsUpdateOp = (1 << 26) | IsExpressionStart,
+  IsMemberOrCallExpression = 1 << 27,
+  IsStringOrNumber = 1 << 28,
+  IsCoalesc = 1 << 29,
 
   /* Node types */
   EndOfSource = 0, // Pseudo
 
   /* Constants/Bindings */
-  Identifier = 1,
-  NumericLiteral = 2,
-  StringLiteral = 3,
-  RegularExpression = 4,
-  FalseKeyword = 5 | Reserved,
-  TrueKeyword = 6 | Reserved,
-  NullKeyword = 7 | Reserved,
+  IsIdentifier = 1,
+  NumericLiteral = 2 | IsExpressionStart | IsStringOrNumber,
+  StringLiteral = 3 | IsExpressionStart | IsStringOrNumber,
+  RegularExpression = 4 | IsExpressionStart,
+  FalseKeyword = 5 | Keywords | IsExpressionStart,
+  TrueKeyword = 6 | Keywords | IsExpressionStart,
+  NullKeyword = 7 | Keywords | IsExpressionStart,
 
   /* Template nodes */
-  TemplateCont = 8,
-  TemplateTail = 9,
+  TemplateCont = 8 | IsExpressionStart | IsMemberOrCallExpression,
+  TemplateTail = 9 | IsExpressionStart | IsMemberOrCallExpression,
 
   /* Punctuators */
   Arrow = 10, // =>
-  LeftParen = 11, // (
-  LeftBrace = 12, // {
-  Period = 13, // .
+  LeftParen = 11 | IsExpressionStart | IsMemberOrCallExpression, // (
+  LeftBrace = 12 | IsExpressionStart | IsPatternStart, // {
+  Period = 13 | IsMemberOrCallExpression, // .
   Ellipsis = 14, // ...
-  RightBrace = 15, // }
+  RightBrace = 15 | IsAutoSemicolon, // }
   RightParen = 16, // )
-  Semicolon = 17, // ;
+  Semicolon = 17 | IsAutoSemicolon, // ;
   Comma = 18, // ,
-  LeftBracket = 19, // [
+  LeftBracket = 19 | IsExpressionStart | IsPatternStart | IsMemberOrCallExpression, // [
   RightBracket = 20, // ]
   Colon = 21, // :
   QuestionMark = 22, // ?
-  QuestionMarkPeriod = 23, // ?.
+  QuestionMarkPeriod = 23 | IsMemberOrCallExpression, // ?.
   SingleQuote = 24, // '
   DoubleQuote = 25, // "
   JSXClose = 26, // </
   JSXAutoClose = 27, // />
 
   /* Update operators */
-  Increment = 28, // ++
-  Decrement = 29, // --
+  Increment = 28 | IsUpdateOp, // ++
+  Decrement = 29 | IsUpdateOp, // --
 
   /* Assign operators */
-  Assign = 30, // =
-  ShiftLeftAssign = 31, // <<=
-  ShiftRightAssign = 32, // >>=
-  LogicalShiftRightAssign = 33, // >>>=
-  ExponentiateAssign = 34, // **=
-  AddAssign = 35, // +=
-  SubtractAssign = 36, // -=
-  MultiplyAssign = 37, // *=
-  DivideAssign = 38, // /=
-  ModuloAssign = 39, // %=
-  BitwiseXorAssign = 40, // ^=
-  BitwiseOrAssign = 41, // |=
-  BitwiseAndAssign = 42, // &=
+  Assign = 30 | IsAssignOp, // =
+  ShiftLeftAssign = 31 | IsAssignOp, // <<=
+  ShiftRightAssign = 32 | IsAssignOp, // >>=
+  LogicalShiftRightAssign = 33 | IsAssignOp, // >>>=
+  ExponentiateAssign = 34 | IsAssignOp, // **=
+  AddAssign = 35 | IsAssignOp, // +=
+  SubtractAssign = 36 | IsAssignOp, // -=
+  MultiplyAssign = 37 | IsAssignOp, // *=
+  DivideAssign = 38 | IsAssignOp, // /=
+  ModuloAssign = 39 | IsAssignOp, // %=
+  BitwiseXorAssign = 40 | IsAssignOp, // ^=
+  BitwiseOrAssign = 41 | IsAssignOp, // |=
+  BitwiseAndAssign = 42 | IsAssignOp, // &=
 
   /* Unary/binary operators */
-  TypeofKeyword = 43 | Reserved,
-  DeleteKeyword = 44 | Reserved,
-  VoidKeyword = 45 | Reserved,
-  Negate = 46, // !
-  Complement = 47, // ~
-  Add = 48 | (10 << PrecStart), // +
-  Subtract = 49 | (10 << PrecStart), // -
-  InKeyword = 50 | (8 << PrecStart) | Reserved,
-  InstanceofKeyword = 51 | (8 << PrecStart) | Reserved,
-  Multiply = 52 | (11 << PrecStart), // *
-  Modulo = 53 | (11 << PrecStart), // %
-  Divide = 54 | (11 << PrecStart), // /
-  Exponentiate = 55 | (12 << PrecStart), // **
-  LogicalAnd = 56 | (3 << PrecStart), // &&
-  LogicalOr = 57 | (2 << PrecStart), // ||
-  StrictEqual = 58 | (7 << PrecStart), // ===
-  StrictNotEqual = 59 | (7 << PrecStart), // !==
-  LooseEqual = 60 | (7 << PrecStart), // ==
-  LooseNotEqual = 61 | (7 << PrecStart), // !=
-  LessThanOrEqual = 62 | (8 << PrecStart), // <=
-  GreaterThanOrEqual = 63 | (8 << PrecStart), // >=
-  LessThan = 64 | (8 << PrecStart), // <
-  GreaterThan = 65 | (8 << PrecStart), // >
-  ShiftLeft = 66 | (9 << PrecStart), // <<
-  ShiftRight = 67 | (9 << PrecStart), // >>
-  LogicalShiftRight = 68 | (9 << PrecStart), // >>>
-  BitwiseAnd = 69 | (6 << PrecStart), // &
-  BitwiseOr = 70 | (4 << PrecStart), // |
-  BitwiseXor = 71 | (5 << PrecStart), // ^
-  Coalesce = 72 | (1 << PrecStart), // ?.
+  TypeofKeyword = 43 | IsUnaryOp | Keywords,
+  DeleteKeyword = 44 | IsUnaryOp | Keywords,
+  VoidKeyword = 45 | IsUnaryOp | Keywords,
+  Negate = 46 | IsUnaryOp, // !
+  Complement = 47 | IsUnaryOp, // ~
+  Add = 48 | IsUnaryOp | IsBinaryOp | (10 << PrecStart), // +
+  Subtract = 49 | IsUnaryOp | IsBinaryOp | (10 << PrecStart), // -
+  InKeyword = 50 | IsBinaryOp | IsInOrOf | (8 << PrecStart) | Keywords,
+  InstanceofKeyword = 51 | IsBinaryOp | (8 << PrecStart) | Keywords,
+  Multiply = 52 | IsBinaryOp | (11 << PrecStart), // *
+  Modulo = 53 | IsBinaryOp | (11 << PrecStart), // %
+  Divide = 54 | IsBinaryOp | (11 << PrecStart), // /
+  Exponentiate = 55 | IsBinaryOp | (12 << PrecStart), // **
+  LogicalAnd = 56 | IsBinaryOp | IsLogical | (3 << PrecStart), // &&
+  LogicalOr = 57 | IsBinaryOp | IsLogical | (2 << PrecStart), // ||
+  StrictEqual = 58 | IsBinaryOp | (7 << PrecStart), // ===
+  StrictNotEqual = 59 | IsBinaryOp | (7 << PrecStart), // !==
+  LooseEqual = 60 | IsBinaryOp | (7 << PrecStart), // ==
+  LooseNotEqual = 61 | IsBinaryOp | (7 << PrecStart), // !=
+  LessThanOrEqual = 62 | IsBinaryOp | (8 << PrecStart), // <=
+  GreaterThanOrEqual = 63 | IsBinaryOp | (8 << PrecStart), // >=
+  LessThan = 64 | IsBinaryOp | (8 << PrecStart), // <
+  GreaterThan = 65 | IsBinaryOp | (8 << PrecStart), // >
+  ShiftLeft = 66 | IsBinaryOp | (9 << PrecStart), // <<
+  ShiftRight = 67 | IsBinaryOp | (9 << PrecStart), // >>
+  LogicalShiftRight = 68 | IsBinaryOp | (9 << PrecStart), // >>>
+  BitwiseAnd = 69 | IsBinaryOp | (6 << PrecStart), // &
+  BitwiseOr = 70 | IsBinaryOp | (4 << PrecStart), // |
+  BitwiseXor = 71 | IsBinaryOp | (5 << PrecStart), // ^
+  Coalesce = 72 | IsBinaryOp | IsCoalesc | (1 << PrecStart), // ?.
 
   /* Variable declaration kinds */
-  VarKeyword = 73 | Reserved,
+  VarKeyword = 73 | Keywords,
   LetKeyword = 74 | FutureReserved,
-  ConstKeyword = 75 | Reserved,
+  ConstKeyword = 75 | Keywords,
 
-  /* Other reserved words */
-  BreakKeyword = 76 | Reserved,
-  CaseKeyword = 77 | Reserved,
-  CatchKeyword = 78 | Reserved,
-  ClassKeyword = 79 | Reserved,
-  ContinueKeyword = 80 | Reserved,
-  DebuggerKeyword = 81 | Reserved,
-  DefaultKeyword = 82 | Reserved,
-  DoKeyword = 83 | Reserved,
-  ElseKeyword = 84 | Reserved,
-  ExportKeyword = 85 | Reserved,
-  ExtendsKeyword = 86 | Reserved,
-  FinallyKeyword = 87 | Reserved,
-  ForKeyword = 88 | Reserved,
-  FunctionKeyword = 89 | Reserved,
-  IfKeyword = 90 | Reserved,
-  ImportKeyword = 91 | Reserved,
-  NewKeyword = 92 | Reserved,
-  ReturnKeyword = 93 | Reserved,
-  SuperKeyword = 94 | Reserved,
-  SwitchKeyword = 95 | Reserved,
-  ThisKeyword = 96 | Reserved,
-  ThrowKeyword = 97 | Reserved,
-  TryKeyword = 98 | Reserved,
-  WhileKeyword = 99 | Reserved,
-  WithKeyword = 100 | Reserved,
+  /* Other Keywords words */
+  BreakKeyword = 76 | Keywords,
+  CaseKeyword = 77 | Keywords,
+  CatchKeyword = 78 | Keywords,
+  ClassKeyword = 79 | Keywords | IsExpressionStart,
+  ContinueKeyword = 80 | Keywords,
+  DebuggerKeyword = 81 | Keywords,
+  DefaultKeyword = 82 | Keywords,
+  DoKeyword = 83 | Keywords,
+  ElseKeyword = 84 | Keywords,
+  ExportKeyword = 85 | Keywords,
+  ExtendsKeyword = 86 | Keywords,
+  FinallyKeyword = 87 | Keywords,
+  ForKeyword = 88 | Keywords,
+  FunctionKeyword = 89 | Keywords | IsExpressionStart,
+  IfKeyword = 90 | Keywords,
+  ImportKeyword = 91 | Keywords | IsExpressionStart,
+  NewKeyword = 92 | Keywords | IsExpressionStart,
+  ReturnKeyword = 93 | Keywords,
+  SuperKeyword = 94 | Keywords | IsExpressionStart,
+  SwitchKeyword = 95 | Keywords | IsExpressionStart,
+  ThisKeyword = 96 | Keywords | IsExpressionStart,
+  ThrowKeyword = 97 | Keywords,
+  TryKeyword = 98 | Keywords,
+  WhileKeyword = 99 | Keywords,
+  WithKeyword = 100 | Keywords,
 
-  /* Strict mode reserved words */
+  /* Strict mode Keywords words */
   ImplementsKeyword = 101 | FutureReserved,
   InterfaceKeyword = 102 | FutureReserved,
   PackageKeyword = 103 | FutureReserved,
@@ -162,17 +155,17 @@ export const enum Token {
   ProtectedKeyword = 105 | FutureReserved,
   PublicKeyword = 106 | FutureReserved,
   StaticKeyword = 107 | FutureReserved,
-  YieldKeyword = 108 | FutureReserved,
+  YieldKeyword = 108 | FutureReserved | IsExpressionStart,
 
   /* Contextual keywords */
   AsKeyword = 109 | Contextual,
   AsyncKeyword = 110 | Contextual,
-  AwaitKeyword = 111 | Contextual,
+  AwaitKeyword = 111 | Contextual | IsExpressionStart,
   ConstructorKeyword = 112 | Contextual,
   GetKeyword = 113 | Contextual,
   SetKeyword = 114 | Contextual,
   FromKeyword = 115 | Contextual,
-  OfKeyword = 116 | Contextual,
+  OfKeyword = 116 | Contextual | IsInOrOf,
 
   /* Others */
   WhiteSpace = 117,
@@ -189,7 +182,21 @@ export const enum Token {
 
   TemplateHead = 126,
   TemplateMiddle = 127,
-  NoSubstitutionTemplateLiteral = 128
+  NoSubstitutionTemplateLiteral = 128,
+
+  /* TypeScript */
+
+  DeclareKeyword = 129 | Identifier,
+  TypeKeyword = 130 | Identifier,
+  AbstractKeyword = 131 | Identifier,
+  NamespaceKeyword = 132 | Identifier,
+  ModuleKeyword = 133 | Identifier,
+  GlobalKeyword = 134 | Identifier,
+  KeyOfKeyword = 135 | Identifier,
+  UniqueKeyword = 136 | Identifier,
+  IsKeyword = 137 | Identifier,
+  ReadOnlyKeyword = 138 | Identifier,
+  InferKeyword = 139 | Identifier
 }
 
 // Note: this *must* be kept in sync with the enum's order.
@@ -228,6 +235,7 @@ export const KeywordDescTable = [
   ']',
   ':',
   '?',
+  '?.',
   "'",
   '"',
   '</',
@@ -288,7 +296,7 @@ export const KeywordDescTable = [
   'let',
   'const',
 
-  /* Other reserved words */
+  /* Other Keywords words */
   'break',
   'case',
   'catch',
@@ -345,7 +353,26 @@ export const KeywordDescTable = [
   '#',
   'bigInt',
   'enum',
-  'UnicodeEscapeIdStart'
+  'UnicodeEscapeIdStart',
+
+  'TemplateHead',
+  'TemplateMiddle',
+  'NoSubstitutionTemplateLiteral',
+  'NoSubstitutionTemplateLiteral',
+
+  /* TypeScript */
+
+  'declare',
+  'type',
+  'abstract',
+  'namespace',
+  'module',
+  'global',
+  'keyof',
+  'unique',
+  'is',
+  'readonly',
+  'infer'
 ];
 
 // Normal object is much faster than Object.create(null), even with typeof check to avoid Object.prototype interference
@@ -402,5 +429,16 @@ export const descKeywordTable: { [key: string]: Token } = Object.create(null, {
   with: { value: Token.WithKeyword },
   yield: { value: Token.YieldKeyword },
   enum: { value: Token.EnumKeyword },
-  as: { value: Token.AsKeyword }
+  as: { value: Token.AsKeyword },
+  declare: { value: Token.DeclareKeyword },
+  type: { value: Token.TypeKeyword },
+  abstract: { value: Token.AbstractKeyword },
+  namespace: { value: Token.NamespaceKeyword },
+  module: { value: Token.ModuleKeyword },
+  global: { value: Token.GlobalKeyword },
+  keyof: { value: Token.KeyOfKeyword },
+  unique: { value: Token.UniqueKeyword },
+  is: { value: Token.IsKeyword },
+  readonly: { value: Token.ReadOnlyKeyword },
+  infer: { value: Token.InferKeyword }
 });

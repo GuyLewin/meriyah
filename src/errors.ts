@@ -24,7 +24,9 @@ export const enum Errors {
   UnicodeOverflow,
   DuplicateRegExpFlag,
   UnexpectedTokenRegExpFlag,
-  UnterminatedRegExp
+  UnterminatedRegExp,
+  RestricedLetProduction,
+  InvalidCoalescing
 }
 
 /*@internal*/
@@ -53,7 +55,10 @@ export const errorMessages: {
   [Errors.UnicodeOverflow]: 'Unicode codepoint must not be greater than 0x10FFFF',
   [Errors.DuplicateRegExpFlag]: "Duplicate regular expression flag '%0'",
   [Errors.UnexpectedTokenRegExpFlag]: 'Unexpected regular expression flag',
-  [Errors.UnterminatedRegExp]: 'Unterminated regular expression'
+  [Errors.UnterminatedRegExp]: 'Unterminated regular expression',
+  [Errors.RestricedLetProduction]: '`let \n [` is a restricted production at the start of a statement',
+  [Errors.InvalidCoalescing]:
+    'Coalescing and logical operators used together in the same expression must be disambiguated with parentheses'
 };
 
 export function report(parser: ParserState, _context: Context, type: Errors, ...params: string[]): void {

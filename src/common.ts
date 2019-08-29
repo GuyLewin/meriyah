@@ -14,10 +14,11 @@ export const enum Context {
   OptionsJSX = 1 << 2,
   OptionsRaw = 1 << 3,
   OptionsRecovery = 1 << 4,
-
+  OptionsTS = 1 << 5,
+  DisallowIn = 1 << 6,
   Strict = 1 << 8,
   Module = 1 << 9,
-
+  TaggedTemplate = 1 << 7,
   ExpressionStart = 1 << 10,
   InTemplate = 1 << 11,
   AllowRegExp = 1 << 12
@@ -55,6 +56,9 @@ export interface ParserState {
   line: number;
   column: number;
   length: number;
+  uid: number;
+  ast: any;
+  precedingLineBreak: 0 | 1;
   token: Token;
   tokenValue: any;
   tokenRaw: string;
@@ -67,11 +71,42 @@ export interface ParserState {
   nextCodePoint: number;
 }
 
-export function expect(parser: ParserState, context: Context, t: Token) {
+export function consume(parser: ParserState, context: Context, t: Token) {
   if (parser.token === t) {
     nextToken(parser, context);
     return true;
+  }
+  report(parser, context, Errors.Expected, KeywordDescTable[t & Token.Type]);
+  return false;
 }
-report(parser, context, Errors.Expected, KeywordDescTable[t & Token.Type]);
-return false;
+
+export function consumeOpt(parser: ParserState, context: Context, t: Token): boolean {
+  if (parser.token === t) {
+    nextToken(parser, context);
+    return true;
+  }
+  return false;
+}
+
+export function canParseSemicolon(parser: ParserState) {
+  // If there's a real semicolon, then we can always parse it out.
+  if (parser.token === Token.Semicolon) {
+    return true;
+  }
+
+  // We can parse out an optional semicolon in ASI cases in the following cases.
+  return parser.token === Token.LeftBrace || parser.token === Token.EndOfSource || parser.precedingLineBreak;
+}
+
+export function consumeSemicolon(parser: ParserState, context: Context): boolean {
+  if (canParseSemicolon(parser)) {
+    if (parser.token === Token.Semicolon) {
+      // consume the semicolon if it was explicitly provided.
+      nextToken(parser, context);
+    }
+
+    return true;
+  } else {
+    return consume(parser, context, Token.Semicolon);
+  }
 }
