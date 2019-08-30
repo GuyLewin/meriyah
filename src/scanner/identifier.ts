@@ -90,7 +90,7 @@ export function scanUnicodeEscape(parser: ParserState): number {
     }
 
     // At least 4 characters have to be read
-    if ((parser.nextCodePoint as number) !== Chars.RightBrace) return Escape.InvalidHex;
+    if ((parser.nextCodePoint as number) !== Chars.RightBrace) return Escape.MissingCurlyBrace;
 
     advance(parser); // consumes '}'
     return codePoint;
@@ -104,4 +104,14 @@ export function scanUnicodeEscape(parser: ParserState): number {
   }
 
   return codePoint;
+}
+
+export function scanUnicodeEscapeIdStart(parser: ParserState, context: Context): Token {
+  const cookedChar = scanIdentifierUnicodeEscape(parser);
+  if (isIdentifierPart(cookedChar)) {
+    return scanIdentifierSlowPath(parser, context, fromCodePoint(cookedChar));
+  }
+  parser.index++; // skip: '\'
+  report(parser, context, handleIdentifierError(cookedChar));
+  return Token.Error;
 }

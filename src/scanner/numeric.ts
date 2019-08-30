@@ -2,7 +2,7 @@ import { CharTypes, CharFlags, isIdentifierStart } from './charClassifier';
 import { Token } from '../token';
 import { Chars } from '../chars';
 import { ParserState, Context } from '../common';
-import { advance, toHex } from './common';
+import { advance, toHex, fromCodePoint } from './common';
 import { report, Errors } from '../errors';
 import { isDecimal, isDecimalOrUnderscore } from './lookup';
 
@@ -67,7 +67,10 @@ export function scanNumber(
     if (char === Chars.Period) {
       char = advance(parser);
 
-      if (char === Chars.Underscore) report(parser, context, Errors.Unexpected);
+      if (char === Chars.Underscore) {
+        report(parser, context, Errors.Unexpected);
+        return Token.Error;
+      }
 
       decimalValue = scanDecimalDigits(parser, context, char);
 
@@ -86,7 +89,10 @@ export function scanNumber(
   let isBigInt: 0 | 1 = 0;
 
   if (char === Chars.LowerN) {
-    if (isFloat || nonOctalDecimalInteger) report(parser, context, Errors.InvalidBigIntLiteral);
+    if (isFloat || nonOctalDecimalInteger) {
+      report(parser, context, Errors.InvalidBigIntLiteral);
+      return Token.Error;
+    }
     char = advance(parser);
   } else if ((char | 32) == Chars.LowerE) {
     char = advance(parser);
@@ -118,7 +124,7 @@ export function scanNumber(
     return Token.Error;
   }
 
-  parser.tokenValue = nonOctalDecimalInteger ? parseFloat(parser.source.slice(parser.startPos, parser.index)) : value;
+  parser.tokenValue = nonOctalDecimalInteger ? parseFloat(parser.source.slice(parser.startPos, parser.index)) : +value;
 
   return isBigInt ? Token.BigIntLiteral : Token.NumericLiteral;
 }
@@ -152,49 +158,127 @@ export function scanDecimalDigits(parser: ParserState, context: Context, char: n
   return (value += parser.source.substring(start, parser.index));
 }
 
-export function scanLeadingZero(
-  parser: ParserState,
-  context: Context,
-  radix: number,
-  radixFlags: CharFlags,
-  isHex: 0 | 1
-) {
-  let value = 0;
+export function scanLeadingZero(parser: ParserState, context: Context, char: number): any {
+  let nonOctalDecimalInteger: 0 | 1 = 0;
+  let allowSeparator: 0 | 1 = 0;
   let digits = 0;
-  let allowSeparator = 0;
-  let char = advance(parser);
-  while (CharTypes[char] & (radixFlags | CharFlags.Underscore)) {
-    if (char === Chars.Underscore) {
-      if (!allowSeparator) {
-        report(parser, context, Errors.ContinuousNumericSeparator);
-        return Token.Error;
+  let value = 0;
+
+  char = advance(parser);
+
+  // Hex
+  if ((char | 32) === Chars.LowerX) {
+    char = advance(parser); // skips 'X', 'x'
+    while (CharTypes[char] & (CharFlags.Hex | CharFlags.Underscore)) {
+      if (char === Chars.Underscore) {
+        if (!allowSeparator) {
+          report(parser, context, Errors.ContinuousNumericSeparator);
+          return Token.Error;
+        }
+        allowSeparator = 0;
+        char = advance(parser);
+        continue;
       }
-      allowSeparator = 0;
+      allowSeparator = 1;
+      value = value * 0x10 + toHex(char);
+      digits++;
       char = advance(parser);
-      continue;
     }
-    allowSeparator = 1;
-    value = isHex ? value * radix + toHex(char) : value * radix + (char - Chars.Zero);
-    digits++;
-    char = advance(parser);
-  }
-  if (digits < 1 || !allowSeparator) {
-    report(parser, context, Errors.TrailingNumericSeparator);
+
+    if (digits < 1 || !allowSeparator) {
+      report(parser, context, digits < 1 ? Errors.MissingHexDigits : Errors.TrailingNumericSeparator);
+      return Token.Error;
+    }
+
+    // Octal
+  } else if ((char | 32) === Chars.LowerO) {
+    char = advance(parser); // skips 'X', 'x'
+    while (CharTypes[char] & (CharFlags.Octal | CharFlags.Underscore)) {
+      if (char === Chars.Underscore) {
+        if (!allowSeparator) {
+          report(parser, context, Errors.ContinuousNumericSeparator);
+          return Token.Error;
+        }
+        allowSeparator = 0;
+        char = advance(parser);
+        continue;
+      }
+      allowSeparator = 1;
+      value = value * 8 + (char - Chars.Zero);
+      digits++;
+      char = advance(parser);
+    }
+    if (digits < 1 || !allowSeparator) {
+      report(parser, context, digits < 1 ? Errors.MissingOctalDigits : Errors.TrailingNumericSeparator);
+      return Token.Error;
+    }
+  } else if ((char | 32) === Chars.LowerB) {
+    char = advance(parser); // skips 'B', 'b'
+    while (CharTypes[char] & (CharFlags.Binary | CharFlags.Underscore)) {
+      if (char === Chars.Underscore) {
+        if (!allowSeparator) {
+          report(parser, context, Errors.ContinuousNumericSeparator);
+          return Token.Error;
+        }
+        allowSeparator = 0;
+        char = advance(parser);
+        continue;
+      }
+      allowSeparator = 1;
+      value = value * 2 + (char - Chars.Zero);
+      digits++;
+      char = advance(parser);
+    }
+    if (digits < 1 || !allowSeparator) {
+      report(parser, context, digits < 1 ? Errors.MissingBinaryDigits : Errors.TrailingNumericSeparator);
+      return Token.Error;
+    }
+  } else if (isDecimal[char]) {
+    // Octal integer literals are not permitted in strict mode code
+    if (context & Context.Strict) {
+      report(parser, context, Errors.StrictOctalEscape);
+      return Token.Error;
+    }
+
+    while (isDecimal[char]) {
+      if (char >= Chars.Eight) {
+        nonOctalDecimalInteger = 1;
+      }
+      value = value * 8 + (char - Chars.Zero);
+      advance(parser);
+      char = parser.nextCodePoint;
+    }
+
+    if (char === Chars.Underscore) {
+      report(parser, context, Errors.SeparatorInZeroPrefixedNumber);
+      return Token.Error;
+    }
+
+    if (char === Chars.LowerN) {
+      report(parser, context, Errors.InvalidBigIntLiteral);
+      return Token.Error;
+    }
+
+    if (nonOctalDecimalInteger) {
+      // Use the decimal scanner for the rest of the number.
+      return scanNumber(parser, context, nonOctalDecimalInteger, /* value */ 0, 0);
+    }
+  } else if (char === Chars.Underscore) {
+    report(parser, context, Errors.SeparatorInZeroPrefixedNumber);
     return Token.Error;
+  } else {
+    return scanNumber(parser, context, nonOctalDecimalInteger, /* value */ 0, 0);
   }
-  parser.tokenValue = value;
-  let isBigInt: 0 | 1 = 0;
 
   if (char === Chars.LowerN) {
-    advance(parser);
-    isBigInt = 1;
+    char = advance(parser);
   }
-
   // The source character immediately following a numeric literal must
   // not be an identifier start or a decimal digit
-  if ((parser.index < parser.length && CharTypes[char] & CharFlags.Decimal) || isIdentifierStart(char)) {
+  if ((parser.index < parser.length && isDecimal[char]) || isIdentifierStart(char)) {
     report(parser, context, Errors.IDStartAfterNumber);
     return Token.Error;
   }
-  return isBigInt ? Token.BigIntLiteral : Token.NumericLiteral;
+  parser.tokenValue = value;
+  return Token.NumericLiteral;
 }

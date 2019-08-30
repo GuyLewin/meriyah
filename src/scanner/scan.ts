@@ -1,19 +1,17 @@
-import { CharTypes, CharFlags, isIdentifierPart } from './charClassifier';
 import { Token } from '../token';
 import { Chars } from '../chars';
 import { ParserState, Context } from '../common';
 import { scanNumber, scanLeadingZero } from './numeric';
 import { parseStringLiteral, scanTemplate } from './string';
-import { scanIdentifier, scanIdentifierUnicodeEscape, scanIdentifierSlowPath } from './identifier';
-import { advance, consumeMultiUnitCodePoint, isExoticECMAScriptWhitespace, fromCodePoint } from './common';
+import { scanIdentifier, scanIdentifierSlowPath, scanUnicodeEscapeIdStart } from './identifier';
+import { advance, consumeMultiUnitCodePoint, isExoticECMAScriptWhitespace } from './common';
 import { report, Errors } from '../errors';
 import { skipSingleLineComment, parseCommentMulti } from './comments';
 import { isIDStart } from './unicode';
-import { handleIdentifierError } from './recovery';
 import { scanRegularExpression } from './regexp';
 import { isDecimal } from './lookup';
 
-export const tokenStartTable = [
+export const firstCharKinds = [
   /*   0 - Null               */ Token.Error,
   /*   1 - Start of Heading   */ Token.Error,
   /*   2 - Start of Text      */ Token.Error,
@@ -145,15 +143,13 @@ export const tokenStartTable = [
 ];
 
 export function scanSingleToken(parser: ParserState, context: Context): Token {
-  let nonOctalDecimalInteger: 0 | 1 = 0;
-
   while (parser.index < parser.length) {
     parser.tokenPos = parser.index;
 
     const char = parser.nextCodePoint;
 
     if (char <= 0x7e) {
-      const token = tokenStartTable[char];
+      const token = firstCharKinds[char];
 
       switch (token) {
         case Token.RightBrace:
@@ -194,61 +190,17 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
         case Token.StringLiteral:
           return parseStringLiteral(parser, context, char);
 
-        case Token.LeadingZero: {
-          advance(parser);
-
-          let next = parser.nextCodePoint | 32;
-
-          if (next === Chars.LowerX) {
-            return scanLeadingZero(parser, context, 0x10, CharFlags.Hex, /* isHex */ 1);
-          }
-          if (next === Chars.LowerB) {
-            return scanLeadingZero(parser, context, 0x2, CharFlags.Binary, /* isHex */ 0);
-          }
-          if (next === Chars.LowerO) {
-            return scanLeadingZero(parser, context, 0x8, CharFlags.Octal, /* isHex */ 0);
-          }
-          if (isDecimal[next]) {
-            let value: number = 0;
-
-            // Octal integer literals are not permitted in strict mode code
-            if (context & Context.Strict) report(parser, context, Errors.StrictOctalEscape);
-
-            while (isDecimal[next]) {
-              if (next >= Chars.Eight) {
-                nonOctalDecimalInteger = 1;
-                break;
-              }
-              value = value * 8 + (next - Chars.Zero);
-              advance(parser);
-              next = parser.nextCodePoint;
-            }
-
-            if (next === Chars.Underscore) {
-              report(parser, context, Errors.TrailingNumericSeparator);
-              return Token.Error;
-            }
-
-            if (next === Chars.LowerN) {
-              report(parser, context, Errors.Unexpected);
-              return Token.Error;
-            }
-
-            if (!nonOctalDecimalInteger) {
-              parser.tokenValue = value;
-              return Token.NumericLiteral;
-            }
-          }
-        }
+        case Token.LeadingZero:
+          return scanLeadingZero(parser, context, char);
 
         case Token.NumericLiteral:
-          return scanNumber(parser, context, nonOctalDecimalInteger, /* value */ 0, 0);
+          return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, /* value */ 0, 0);
 
         // `.`, `...`, `.123` (numeric literal)
         case Token.Period:
           advance(parser);
-          if ((CharTypes[parser.nextCodePoint] & CharFlags.Decimal) !== 0)
-            return scanNumber(parser, context, /* nonOctalDecimalInteger */ 1, /* value */ 0, 1);
+          if (isDecimal[parser.nextCodePoint])
+            return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, /* value */ 0, 1);
           if (parser.nextCodePoint === Chars.Period) {
             advance(parser);
             if (parser.nextCodePoint === Chars.Period) {
@@ -260,13 +212,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           return Token.Period;
 
         case Token.UnicodeEscapeIdStart:
-          const cookedChar = scanIdentifierUnicodeEscape(parser);
-          if (isIdentifierPart(cookedChar)) {
-            return scanIdentifierSlowPath(parser, context, fromCodePoint(cookedChar));
-          }
-          parser.index++; // skip: '\'
-          report(parser, context, handleIdentifierError(cookedChar));
-          return Token.Error;
+          return scanUnicodeEscapeIdStart(parser, context);
 
         case Token.TemplateTail:
           return scanTemplate(parser, context);

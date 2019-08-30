@@ -22,8 +22,14 @@ export function parseStringLiteral(parser: ParserState, context: Context, quote:
 
       return Token.StringLiteral;
     }
+
     if (ch === Chars.Backslash) {
       ch = parser.source.charCodeAt(++parser.index);
+
+      if (parser.index >= parser.length) {
+        report(parser, context, Errors.InvalidEOFInEscape);
+        return Token.Error;
+      }
 
       if (ch >= 128) {
         ret += fromCodePoint(ch);
@@ -49,6 +55,8 @@ export function parseStringLiteral(parser: ParserState, context: Context, quote:
     }
   }
 
+  report(parser, context, Errors.InvalidASCIILineBreak);
+
   return Token.Error;
 }
 
@@ -73,7 +81,7 @@ export function scanTemplate(parser: ParserState, context: Context): Token {
       ch = parser.source.charCodeAt(++parser.index);
 
       if (parser.index >= parser.length) {
-        report(parser, context, Errors.UnterminatedTemplate);
+        report(parser, context, Errors.InvalidEOFInEscape);
         return Token.Error;
       }
 
@@ -302,7 +310,8 @@ export function parseEscape(parser: ParserState, context: Context, first: number
           digits++;
         }
 
-        if (digits < 4 || ch !== Chars.RightBrace) return UnicodeEscape.InvalidHex;
+        if (digits < 4) return UnicodeEscape.InvalidHex;
+        if (ch !== Chars.RightBrace) return UnicodeEscape.MissingCurlyBrace;
 
         return code;
       }

@@ -6,7 +6,8 @@ export const enum Escape {
   InvalidHex = -3,
   UnicodeOverflow = -4,
   InvalidSequence = -5,
-  InvalidUnicode = -6
+  InvalidUnicode = -6,
+  MissingCurlyBrace = -7
 }
 
 export const enum UnicodeEscape {
@@ -14,7 +15,8 @@ export const enum UnicodeEscape {
   StrictOctal = -2,
   EightOrNine = -3,
   InvalidHex = -4,
-  OutOfRange = -5
+  OutOfRange = -5,
+  MissingCurlyBrace = -6
 }
 
 export function handleIdentifierError(code: Escape): Errors {
@@ -31,7 +33,8 @@ export function handleIdentifierError(code: Escape): Errors {
     case Escape.InvalidUnicode:
     case Escape.InvalidSequence:
       return Errors.InvalidUnicodeEscapeSequence;
-
+    case Escape.MissingCurlyBrace:
+      return Errors.MissingCurlyBrace;
     default:
       return Errors.Unexpected;
   }
@@ -49,6 +52,9 @@ export function handleEscapeError(code: UnicodeEscape, isTemplate: 0 | 1): Error
   }
   if (code === UnicodeEscape.OutOfRange) {
     return Errors.UnicodeOverflow;
+  }
+  if (code === UnicodeEscape.MissingCurlyBrace) {
+    return Errors.MissingCurlyBrace;
   }
 
   return Errors.Unexpected;
