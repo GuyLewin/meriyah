@@ -196,7 +196,12 @@ export const enum Token {
   UniqueKeyword = 136 | Identifier,
   IsKeyword = 137 | Identifier,
   ReadOnlyKeyword = 138 | Identifier,
-  InferKeyword = 139 | Identifier
+  InferKeyword = 139 | Identifier,
+
+  /* Escapes */
+
+  EscapedStrictReserved = 140,
+  EscapedKeyword = 141
 }
 
 // Note: this *must* be kept in sync with the enum's order.
@@ -372,7 +377,12 @@ export const KeywordDescTable = [
   'unique',
   'is',
   'readonly',
-  'infer'
+  'infer',
+
+  /* Escapes */
+
+  'EscapedStrictReserved',
+  'EscapedKeyword'
 ];
 
 // Normal object is much faster than Object.create(null), even with typeof check to avoid Object.prototype interference

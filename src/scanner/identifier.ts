@@ -6,23 +6,30 @@ import { advance, fromCodePoint, toHex, consumeMultiUnitCodePoint } from './comm
 import { report } from '../errors';
 import { handleIdentifierError, Escape } from './recovery';
 
-export function scanIdentifier(parser: ParserState, context: Context): Token {
+export function scanIdentifierOrKeyword(parser: ParserState, context: Context, canBeKeyword: 0 | 1): Token {
   while (identifierPart[advance(parser)]) {}
 
-  let value = parser.source.slice(parser.tokenPos, parser.index);
+  const value = parser.source.slice(parser.tokenPos, parser.index);
 
   if (identifierPart[parser.nextCodePoint]) {
     parser.tokenValue = value;
 
+    if (canBeKeyword === 0) return Token.Identifier;
+
     return descKeywordTable[parser.tokenValue] || Token.Identifier;
   }
 
-  return scanIdentifierSlowPath(parser, context, value);
+  return scanIdentifierSlowPath(parser, context, value, canBeKeyword);
 }
 
-export function scanIdentifierSlowPath(parser: ParserState, context: Context, value: string): Token {
+export function scanIdentifierSlowPath(
+  parser: ParserState,
+  context: Context,
+  value: string,
+  canBeKeyword: 0 | 1
+): Token {
   let start = parser.index;
-  let hasEscape: 0 | 1;
+  let hasEscape: 0 | 1 = 0;
 
   while (parser.index < parser.length) {
     if (parser.nextCodePoint === Chars.Backslash) {
@@ -33,6 +40,7 @@ export function scanIdentifierSlowPath(parser: ParserState, context: Context, va
         report(parser, context, handleIdentifierError(code));
         return Token.Error;
       }
+      canBeKeyword = 1;
       value += fromCodePoint(code);
       start = parser.index;
     } else if (isIdentifierPart(parser.nextCodePoint) || consumeMultiUnitCodePoint(parser, parser.nextCodePoint)) {
@@ -42,15 +50,31 @@ export function scanIdentifierSlowPath(parser: ParserState, context: Context, va
     }
   }
 
-  if (parser.index <= parser.length) {
-    value += parser.source.slice(start, parser.index);
-  }
+  if (parser.index <= parser.length) value += parser.source.slice(start, parser.index);
 
   const length = value.length;
 
   parser.tokenValue = value;
 
-  if (length >= 2 && length <= 11) return descKeywordTable[parser.tokenValue] || Token.Identifier;
+  if (canBeKeyword && length >= 2 && length <= 11) {
+    const token: Token | undefined = descKeywordTable[parser.tokenValue];
+
+    if (token === void 0) return Token.Identifier;
+
+    if (hasEscape === 0) return token;
+
+    if (context & Context.Strict) {
+      if ((token & Token.FutureReserved) === Token.FutureReserved) {
+        return Token.EscapedStrictReserved;
+      }
+
+      if (token === Token.LetKeyword || token === Token.StaticKeyword) {
+        return Token.EscapedStrictReserved;
+      }
+    }
+
+    return Token.EscapedKeyword;
+  }
 
   return Token.Identifier;
 }
@@ -109,7 +133,7 @@ export function scanUnicodeEscape(parser: ParserState): number {
 export function scanUnicodeEscapeIdStart(parser: ParserState, context: Context): Token {
   const cookedChar = scanIdentifierUnicodeEscape(parser);
   if (isIdentifierPart(cookedChar)) {
-    return scanIdentifierSlowPath(parser, context, fromCodePoint(cookedChar));
+    return scanIdentifierSlowPath(parser, context, fromCodePoint(cookedChar), /* canBeKeyword */ 1);
   }
   parser.index++; // skip: '\'
   report(parser, context, handleIdentifierError(cookedChar));

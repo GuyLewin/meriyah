@@ -3,7 +3,7 @@ import { Chars } from '../chars';
 import { ParserState, Context } from '../common';
 import { scanNumber, scanLeadingZero } from './numeric';
 import { parseStringLiteral, scanTemplate } from './string';
-import { scanIdentifier, scanIdentifierSlowPath, scanUnicodeEscapeIdStart } from './identifier';
+import { scanIdentifierOrKeyword, scanIdentifierSlowPath, scanUnicodeEscapeIdStart } from './identifier';
 import { advance, consumeMultiUnitCodePoint, isExoticECMAScriptWhitespace } from './common';
 import { report, Errors } from '../errors';
 import { skipSingleLineComment, parseCommentMulti } from './comments';
@@ -109,32 +109,32 @@ export const firstCharKinds = [
   /*  94 - ^                  */ Token.BitwiseXor,
   /*  95 - _                  */ Token.Identifier,
   /*  96 - `                  */ Token.TemplateTail,
-  /*  97 - a                  */ Token.Identifier,
-  /*  98 - b                  */ Token.Identifier,
-  /*  99 - c                  */ Token.Identifier,
-  /* 100 - d                  */ Token.Identifier,
-  /* 101 - e                  */ Token.Identifier,
-  /* 102 - f                  */ Token.Identifier,
-  /* 103 - g                  */ Token.Identifier,
+  /*  97 - a                  */ Token.IdentifierOrKeyword,
+  /*  98 - b                  */ Token.IdentifierOrKeyword,
+  /*  99 - c                  */ Token.IdentifierOrKeyword,
+  /* 100 - d                  */ Token.IdentifierOrKeyword,
+  /* 101 - e                  */ Token.IdentifierOrKeyword,
+  /* 102 - f                  */ Token.IdentifierOrKeyword,
+  /* 103 - g                  */ Token.IdentifierOrKeyword,
   /* 104 - h                  */ Token.Identifier,
-  /* 105 - i                  */ Token.Identifier,
+  /* 105 - i                  */ Token.IdentifierOrKeyword,
   /* 106 - j                  */ Token.Identifier,
   /* 107 - k                  */ Token.Identifier,
-  /* 108 - l                  */ Token.Identifier,
+  /* 108 - l                  */ Token.IdentifierOrKeyword,
   /* 109 - m                  */ Token.Identifier,
-  /* 110 - n                  */ Token.Identifier,
+  /* 110 - n                  */ Token.IdentifierOrKeyword,
   /* 111 - o                  */ Token.Identifier,
-  /* 112 - p                  */ Token.Identifier,
+  /* 112 - p                  */ Token.IdentifierOrKeyword,
   /* 113 - q                  */ Token.Identifier,
-  /* 114 - r                  */ Token.Identifier,
-  /* 115 - s                  */ Token.Identifier,
-  /* 116 - t                  */ Token.Identifier,
+  /* 114 - r                  */ Token.IdentifierOrKeyword,
+  /* 115 - s                  */ Token.IdentifierOrKeyword,
+  /* 116 - t                  */ Token.IdentifierOrKeyword,
   /* 117 - u                  */ Token.Identifier,
-  /* 118 - v                  */ Token.Identifier,
-  /* 119 - w                  */ Token.Identifier,
+  /* 118 - v                  */ Token.IdentifierOrKeyword,
+  /* 119 - w                  */ Token.IdentifierOrKeyword,
   /* 120 - x                  */ Token.Identifier,
-  /* 121 - y                  */ Token.Identifier,
-  /* 122 - z                  */ Token.Identifier,
+  /* 121 - y                  */ Token.IdentifierOrKeyword,
+  /* 122 - z                  */ Token.IdentifierOrKeyword,
   /* 123 - {                  */ Token.LeftBrace,
   /* 124 - |                  */ Token.BitwiseOr,
   /* 125 - }                  */ Token.RightBrace,
@@ -184,8 +184,11 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           continue;
         }
 
+        case Token.IdentifierOrKeyword:
+          return scanIdentifierOrKeyword(parser, context, /* canBeKeyword */ 1);
+
         case Token.Identifier:
-          return scanIdentifier(parser, context);
+          return scanIdentifierOrKeyword(parser, context, /* canBeKeyword */ 0);
 
         case Token.StringLiteral:
           return parseStringLiteral(parser, context, char);
@@ -470,7 +473,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
     }
 
     if (isIDStart(char) || consumeMultiUnitCodePoint(parser, parser.nextCodePoint)) {
-      return scanIdentifierSlowPath(parser, context, '');
+      return scanIdentifierSlowPath(parser, context, '', /* canBeKeyword */ 0);
     }
 
     if (isExoticECMAScriptWhitespace(char)) {
