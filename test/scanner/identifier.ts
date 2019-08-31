@@ -145,4 +145,20 @@ describe('Scanner - Identifier', () => {
       );
     });
   }
+
+  function fail(name: string, source: string, context: Context) {
+    it(name, () => {
+      const state = create(source);
+      t.throws(() => scanSingleToken(state, context));
+    });
+  }
+
+  fail('fails on abc\\u{}', 'abc\\u{}', Context.Empty);
+  fail('fails on abc\\u{}', '\\u{}', Context.Empty);
+  fail('fails on abc\\u{}', '\\u{}abc', Context.Empty);
+  fail('fails on abc\\u{}', '\\{}abc', Context.Empty);
+  fail('fails on abc\\u{}', '\\u{abc', Context.Empty);
+  fail('fails on 0.1n', '0.1n', Context.Empty);
+  fail('fails on 2017.8n', '2017.8n', Context.Empty);
+  fail('fails on 0xgn', '0xgn', Context.Empty);
 });

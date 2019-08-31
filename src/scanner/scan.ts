@@ -6,7 +6,7 @@ import { parseStringLiteral, scanTemplate } from './string';
 import { scanIdentifierOrKeyword, scanIdentifierSlowPath, scanUnicodeEscapeIdStart } from './identifier';
 import { advance, consumeMultiUnitCodePoint, isExoticECMAScriptWhitespace } from './common';
 import { report, Errors } from '../errors';
-import { skipSingleLineComment, parseCommentMulti } from './comments';
+import { skipSingleLineComment, skipMultiLineComment } from './comments';
 import { isIDStart } from './unicode';
 import { scanRegularExpression } from './regexp';
 import { isDecimal } from './lookup';
@@ -143,6 +143,9 @@ export const firstCharKinds = [
 ];
 
 export function scanSingleToken(parser: ParserState, context: Context): Token {
+  let lastIsCR = 0;
+
+  const isStartOfLine = parser.index === 0;
   while (parser.index < parser.length) {
     parser.tokenPos = parser.index;
 
@@ -171,16 +174,20 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           continue;
 
         case Token.CarriageReturn:
-          advance(parser);
+          lastIsCR = 1;
+          parser.nextCodePoint = parser.source.charCodeAt(++parser.index);
+          parser.column = 0;
+          parser.line++;
           parser.precedingLineBreak = 1;
-          if (parser.index < parser.length && parser.nextCodePoint === Chars.LineFeed) {
-            advance(parser);
-          }
           continue;
-
         case Token.LineFeed: {
           parser.precedingLineBreak = 1;
-          advance(parser);
+          parser.nextCodePoint = parser.source.charCodeAt(++parser.index);
+          if (lastIsCR === 0) {
+            parser.column = 0;
+            parser.line++;
+          }
+          lastIsCR = 0;
           continue;
         }
 
@@ -199,6 +206,12 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
         case Token.NumericLiteral:
           return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, /* value */ 0, 0);
 
+        case Token.UnicodeEscapeIdStart:
+          return scanUnicodeEscapeIdStart(parser, context);
+
+        case Token.TemplateTail:
+          return scanTemplate(parser, context);
+
         // `.`, `...`, `.123` (numeric literal)
         case Token.Period:
           advance(parser);
@@ -213,12 +226,6 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           }
 
           return Token.Period;
-
-        case Token.UnicodeEscapeIdStart:
-          return scanUnicodeEscapeIdStart(parser, context);
-
-        case Token.TemplateTail:
-          return scanTemplate(parser, context);
 
         // `<`, `<=`, `<<`, `<<=`, `</`, `<!--`
         case Token.LessThan:
@@ -236,6 +243,20 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
             if (parser.nextCodePoint === Chars.EqualSign) {
               advance(parser);
               return Token.LessThanOrEqual;
+            }
+            if (parser.nextCodePoint === Chars.Exclamation) {
+              // Treat HTML begin-comment as comment-till-end-of-line.
+              if (
+                parser.source.charCodeAt(parser.index + 2) === Chars.Hyphen &&
+                parser.source.charCodeAt(parser.index + 1) === Chars.Hyphen
+              ) {
+                parser.index += 2;
+                parser.column += 3;
+
+                skipSingleLineComment(parser);
+                continue;
+              }
+              return Token.LessThan;
             }
           }
           return Token.LessThan;
@@ -351,6 +372,18 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
           if (ch === Chars.Hyphen) {
             advance(parser);
+            if (
+              (context & Context.Module) === 0 &&
+              (parser.precedingLineBreak || isStartOfLine) &&
+              parser.nextCodePoint === Chars.GreaterThan
+            ) {
+              if (context & Context.DisableWebCompat) {
+                report(parser, context, Errors.HtmlCommentInWebCompat);
+                return Token.Error;
+              }
+              skipSingleLineComment(parser);
+              continue;
+            }
             return Token.Decrement;
           }
 
@@ -372,13 +405,14 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
               skipSingleLineComment(parser);
               continue;
             }
-            if (context & Context.AllowRegExp) {
-              return scanRegularExpression(parser, context);
-            }
             if (ch === Chars.Asterisk) {
               advance(parser);
-              parseCommentMulti(parser, context);
+              const state = skipMultiLineComment(parser, context);
+              if (state < 1) return Token.Error;
               continue;
+            }
+            if (context & Context.AllowRegExp) {
+              return scanRegularExpression(parser, context);
             }
             if (ch === Chars.EqualSign) {
               advance(parser);
@@ -467,8 +501,11 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
       }
     }
     if ((char ^ Chars.LineSeparator) <= 1) {
+      lastIsCR = 0;
       parser.precedingLineBreak = 1;
-      advance(parser);
+      parser.nextCodePoint = parser.source.charCodeAt(++parser.index);
+      parser.column = 0;
+      parser.line++;
       continue;
     }
 

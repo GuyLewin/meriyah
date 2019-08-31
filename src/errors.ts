@@ -33,7 +33,9 @@ export const enum Errors {
   MissingCurlyBrace,
   SeparatorInZeroPrefixedNumber,
   InvalidASCIILineBreak,
-  InvalidEOFInEscape
+  InvalidEOFInEscape,
+  HtmlCommentInWebCompat,
+  UnterminatedComment
 }
 
 /*@internal*/
@@ -71,6 +73,8 @@ export const errorMessages: {
   [Errors.RestricedLetProduction]: '`let \n [` is a restricted production at the start of a statement',
   [Errors.InvalidASCIILineBreak]: 'Invalid unescaped line break in string literal',
   [Errors.InvalidEOFInEscape]: 'Reached end of script in the middle of an escape sequence',
+  [Errors.HtmlCommentInWebCompat]: 'HTML comments are only allowed with web compability (Annex B)',
+  [Errors.UnterminatedComment]: 'Multiline comment was not closed properly',
   [Errors.InvalidCoalescing]:
     'Coalescing and logical operators used together in the same expression must be disambiguated with parentheses'
 };

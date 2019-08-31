@@ -11,7 +11,7 @@ export function scanIdentifierOrKeyword(parser: ParserState, context: Context, c
 
   const value = parser.source.slice(parser.tokenPos, parser.index);
 
-  if (identifierPart[parser.nextCodePoint]) {
+  if (parser.nextCodePoint !== Chars.Backslash && parser.nextCodePoint < 0x7e) {
     parser.tokenValue = value;
 
     if (canBeKeyword === 0) return Token.Identifier;

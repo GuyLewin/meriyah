@@ -4,6 +4,7 @@ import { unicodeLookup } from './unicode';
 import { Escape } from './recovery';
 
 export function advance(parser: ParserState): number {
+  parser.column++;
   return (parser.nextCodePoint = parser.source.charCodeAt(++parser.index));
 }
 

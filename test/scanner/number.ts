@@ -23,7 +23,7 @@ describe('Scanner - Identifier', () => {
     [Context.Empty, '32.', 32],
     [Context.Empty, '8.', 8],
     [Context.Empty, '1234567890.', 1234567890],
-
+    [Context.Empty, '.12343243289787943289742348974897487', 0.12343243289787943],
     [Context.Empty, '456.', 456],
     [Context.Empty, '2.3', 2.3],
     [Context.Empty, '5.5', 5.5],
@@ -99,7 +99,6 @@ describe('Scanner - Identifier', () => {
     [Context.Empty, '0x9a', 154],
     [Context.Empty, '0x1234567890abcdefABCEF', 1.3754889323622168e24],
     [Context.Empty, '0X1234567890abcdefABCEF1234567890abcdefABCEF', 2.6605825358829506e49],
-
     [Context.Empty, '0X14245890abcdefABCE234567890ab234567890abcdeF1234567890abefABCEF', 5.694046700000817e74],
 
     // Binary
@@ -138,21 +137,21 @@ describe('Scanner - Identifier', () => {
     [Context.Empty, '01', 1],
     [Context.Empty, '043', 35],
     [Context.Empty, '07', 7],
-    // [Context.Empty, '09', 9],
-    // [Context.Empty, '09.3', 9.3],
-    // [Context.Empty, '09.3e1', 93],
-    // [Context.Empty, '09.3e-1', 0.93],
-    // [Context.Empty, '098', 98],
-    // [Context.Empty, '0098', 98],
-    // [Context.Empty, '000000000098', 98],
-    // [Context.Empty, '0000000000234567454548', 234567454548],
+    [Context.Empty, '09', 9],
+    [Context.Empty, '09.3', 9.3],
+    [Context.Empty, '09.3e1', 93],
+    [Context.Empty, '09.3e-1', 0.93],
+    [Context.Empty, '098', 98],
+    [Context.Empty, '0098', 98],
+    [Context.Empty, '000000000098', 98],
+    [Context.Empty, '0000000000234567454548', 234567454548],
 
     // Numeric separators
     [Context.Empty, '0', 0],
     [Context.Empty, '1.1', 1.1],
     [Context.Empty, '1_1', 11],
     [Context.Empty, '1.1_1', 1.11],
-
+    [Context.Empty, '1_1.1_1', 11.11],
     [Context.Empty, '0O01_1', 9],
     [Context.Empty, '0O0_7_7', 63],
     [Context.Empty, '0B0_1', 1],
@@ -160,7 +159,29 @@ describe('Scanner - Identifier', () => {
     [Context.Empty, '0B011_11_1_1_11_11111_1111111_1111_11111', 536870911],
     [Context.Empty, '0X0_1', 1],
     [Context.Empty, '0X0_1_0', 16],
-    [Context.Empty, '0Xa', 10]
+    [Context.Empty, '0Xa', 10],
+    [Context.Empty, '0o7_0', 56],
+    [Context.Empty, '0o0', 0],
+    [Context.Empty, '0o0_7', 7],
+    [Context.Empty, '0O0_1_1', 9],
+    [Context.Empty, '0O12345_670_0_035672345674_3_5', 96374499007469390000],
+    [Context.Empty, '0B0_1', 1],
+    [Context.Empty, '0B01_0_0_1', 9],
+    [Context.Empty, '0B0111111_1_1_111111111111111_1111_11', 536870911],
+
+    // BigInt
+    [Context.Empty, '1n', 1],
+    [Context.Empty, '14567890672136732763333337n', 1.4567890672136733e25],
+    [Context.Empty, '111n', 111],
+    [Context.Empty, '0b01_0n', 2],
+    [Context.Empty, '0B0_1n', 1],
+    [Context.Empty, '0X0_1_0n', 16],
+    [Context.Empty, '0O0_10n', 8],
+    [Context.Empty, '0o3_3n', 27],
+    [Context.Empty, '1_0123456789n', 10123456789],
+    [Context.Empty, '1_1n', 11],
+    [Context.Empty, '2_2n', 22],
+    [Context.Empty, '0x2_2n', 34]
   ];
 
   for (const [ctx, op, value] of tokens) {
@@ -197,4 +218,124 @@ describe('Scanner - Identifier', () => {
       );
     });
   }
+
+  function fail(name: string, source: string, context: Context) {
+    it(name, () => {
+      const state = create(source);
+      t.throws(() => scanSingleToken(state, context));
+    });
+  }
+
+  fail('fails on 11.1n', '11.1n', Context.Strict);
+  fail('fails on 0.1n', '0.1n', Context.Empty);
+  fail('fails on 2017.8n', '2017.8n', Context.Empty);
+  fail('fails on 0xgn', '0xgn', Context.Strict);
+  fail('fails on 0e0n', '0e0n', Context.Empty);
+  fail('fails on 0o9n', '0o9n', Context.Empty);
+  fail('fails on 0b2n', '0b2n', Context.Empty);
+  fail('fails on 008.3', '008.3', Context.Strict);
+  fail('fails on 008.3n', '008.3n', Context.Empty);
+  fail('fails on 0b2', '0b2', Context.Empty);
+  // fail('fails on 00b0', '00b0', Context.Empty);
+  fail('fails on 0b', '0b', Context.Empty);
+  fail('fails on 00', '00', Context.Strict);
+  fail('fails on 000', '000', Context.Strict);
+  fail('fails on 005', '005', Context.Strict);
+  fail('fails on 08', '08', Context.Strict);
+  fail('fails on 0o8', '0o8', Context.Empty);
+  fail('fails on 0x', '0x', Context.Empty);
+  fail('fails on 10e', '10e', Context.Empty);
+  fail('fails on 10e-', '10e-', Context.Empty);
+  fail('fails on 10e+', '10e+', Context.Empty);
+  fail('fails on 10ef', '10ef', Context.Empty);
+  fail('fails on decimal integer followed by identifier', '12adf00', Context.Empty);
+  fail('fails on decimal integer followed by identifier', '3in1', Context.Empty);
+  fail('fails on decimal integer followed by identifier', '3.e', Context.Empty);
+  fail('fails on decimal integer followed by identifier', '3.e+abc', Context.Empty);
+  // fail('fails on Binary-integer-literal-like sequence with a leading 0', '00b0;', Context.Empty);
+  fail('fails on Octal-integer-literal-like sequence containing an invalid digit', '0o8', Context.Strict);
+  fail('fails on Octal-integer-literal-like sequence containing an invalid digit', '0b3', Context.Strict);
+  fail('fails on Octal-integer-literal-like sequence without any digits', '0o', Context.Strict);
+  fail('fails on Binary-integer-literal-like sequence without any digits', '0b;', Context.Strict);
+  fail('fails on Binary-integer-literal-like sequence containing an invalid digit', '0b2;', Context.Strict);
+  fail('fails on Binary-integer-literal-like sequence containing an invalid digit', '0077', Context.Strict);
+  fail('fails on invalid BigInt literal', '1ne-1', Context.OptionsNext);
+  fail('fails on 1__', '1__', Context.Empty);
+  fail('fails on 1__2', '1__2', Context.Empty);
+  fail('fails on 1.__', '1.__', Context.Empty);
+  fail('fails on 1.__1', '1.__1', Context.Empty);
+  fail('fails on 1._1', '1._1', Context.Empty);
+  fail('fails on 0O_01_1_', '0O_01_1_', Context.Empty);
+  fail('fails on 0O_01_____1_', '0O_01_____1_', Context.Empty);
+  fail('fails on 1E-1____', '1E-1____', Context.Empty);
+  fail('fails on 9_1e+1_', '9_1e+1_', Context.Empty);
+  fail('fails on 0b_', '0b_', Context.Empty);
+  fail('fails on 0O_01_1', '0O_01_1', Context.Empty);
+  fail('fails on 0b__0', '0b__0', Context.Empty);
+  fail('fails on 0b0_', '0b0_', Context.Empty);
+  fail('fails on 0X0__10', '0X0__10', Context.Empty);
+  fail('fails on 0X_a_', '0X_a_', Context.Empty);
+  fail('fails on 0e+1__2_', '0e+1__2_', Context.Empty);
+  fail('fails on 0e+_1', '0e+_1', Context.Empty);
+  fail('fails on 0e+1_', '0e+1_', Context.Empty);
+  fail('fails on 0_', '0_', Context.Empty);
+  fail('fails on 0x1_', '0x1_', Context.Empty);
+  fail('fails on 0x_1', '0x_1', Context.Empty);
+  fail('fails on 0o_1', '0o_1', Context.Empty);
+  fail('fails on 0o_', '0o_', Context.Empty);
+  fail('fails on 0o_', '0o_', Context.Empty);
+  fail('fails on 0o2_', '0o_', Context.Empty);
+  fail('fails on 0o2_________', '0o_', Context.Empty);
+  fail('fails on 0b_1', '0b_1', Context.Empty);
+  fail('fails on 0b1_', '0b1_', Context.Empty);
+  fail('fails on 0b', '0b', Context.Empty);
+  fail('fails on 0o', '0o', Context.Empty);
+  fail('fails on 0x', '0x', Context.Empty);
+  fail('fails on 1_', '1_', Context.Empty);
+  fail('fails on 1__', '1__', Context.Empty);
+  fail('fails on 1_1_', '1_1_', Context.Empty);
+  fail('fails on 1__1_', '1__1_', Context.Empty);
+  fail('fails on 1_1__', '1_1__', Context.Empty);
+  fail('fails on 1_.1', '1_.1', Context.Empty);
+  fail('fails on 1_.1_', '1_.1_', Context.Empty);
+  fail('fails on 0O1_', '0O1_', Context.Empty);
+  fail('fails on 0O1__', '0O1__', Context.Empty);
+  fail('fails on 0O1_1_', '0O1_1_', Context.Empty);
+  fail('fails on 0O1__1_', '0O1__1_', Context.Empty);
+  fail('fails on 0O1_1__', '0O1_1__', Context.Empty);
+  fail('fails on 09.3en', '09.3en', Context.Empty);
+  fail('fails on 09.3e-1n', '09.3e-n', Context.Empty);
+  fail('fails on 00123n', '00123n', Context.Empty);
+  fail('fails on .3e-1n', '.3e-1n', Context.Empty);
+  fail('fails on .3e-1n', '.3e-n', Context.Empty);
+  fail('fails on 09_0n;', '09_0n;', Context.Empty);
+  fail('fails on 0098n', '0098n', Context.Empty);
+  fail('fails on 0b98n33', '0b98n33', Context.Empty);
+  fail('fails on 0O98n33', '0O98n33', Context.Empty);
+  fail('fails on .0000000001n', '.0000000001n', Context.Empty);
+  fail('fails on 0xabcinstanceof x', '0xabcinstanceof x', Context.Empty);
+  fail('fails on .0000000001n', '.0000000001n', Context.Empty);
+  fail('fails on .0000000001n', '.0000000001n', Context.Empty);
+  fail('fails on .1n', '.1n', Context.Empty);
+  fail('fails on 0.1n', '0.1n', Context.Empty);
+  fail('fails on 00n', '00n', Context.Empty);
+  fail('fails on 0008n', '0008n', Context.Empty);
+  fail('fails on 012348n', '012348n', Context.Empty);
+  fail('fails on 08n', '08n', Context.Empty);
+  fail('fails on 09n', '09n', Context.Empty);
+  fail('fails on 0b_1n', '0b_1n', Context.Empty);
+  fail('fails on 0b0_n', '0b0_n', Context.Empty);
+  fail('fails on 1__0123456789n', '1__0123456789n', Context.Empty);
+  fail('fails on 1_n', '1_n', Context.Empty);
+  fail('fails on 10__0123456789n', '10__0123456789n', Context.Empty);
+  fail('fails on 10_n', '10_n', Context.Empty);
+  fail('fails on 0x_1n', '0x_1n', Context.Empty);
+  fail('fails on 0x0__0n', '0x0__0n', Context.Empty);
+  fail('fails on 0x0_n', '0x0_n', Context.Empty);
+  fail('fails on 00_0n', '00_0n', Context.Empty);
+  // fail('fails on 0_8n', '0_8n', Context.Empty);
+  fail('fails on 0__0123456789n', '0__0123456789n', Context.Empty);
+  fail('fails on 0o0__0n', '0o0__0n', Context.Empty);
+  //fail('fails on 1\u005F0123456789n', '1\\u005F0123456789n', Context.Empty);
+  fail('fails on 0O12345_670_0_035672345674_3_5_', '0O12345_670_0_035672345674_3_5_', Context.Empty);
 });

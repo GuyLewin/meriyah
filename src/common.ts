@@ -21,7 +21,8 @@ export const enum Context {
   TaggedTemplate = 1 << 7,
   ExpressionStart = 1 << 10,
   InTemplate = 1 << 11,
-  AllowRegExp = 1 << 12
+  AllowRegExp = 1 << 12,
+  DisableWebCompat = 1 << 13
 }
 
 /**
