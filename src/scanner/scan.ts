@@ -2,14 +2,13 @@ import { Token } from '../token';
 import { Chars } from '../chars';
 import { ParserState, Context } from '../common';
 import { scanNumber, scanLeadingZero } from './numeric';
-import { parseStringLiteral, scanTemplate } from './string';
+import { scanStringLiteral, scanTemplate } from './string';
 import { scanIdentifierOrKeyword, scanIdentifierSlowPath, scanUnicodeEscapeIdStart } from './identifier';
 import { advance, consumeMultiUnitCodePoint, isExoticECMAScriptWhitespace } from './common';
 import { report, Errors } from '../errors';
 import { skipSingleLineComment, skipMultiLineComment } from './comments';
 import { isIDStart } from './unicode';
 import { scanRegularExpression } from './regexp';
-import { isDecimal } from './lookup';
 
 export const firstCharKinds = [
   /*   0 - Null               */ Token.Error,
@@ -146,6 +145,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
   let lastIsCR = 0;
 
   const isStartOfLine = parser.index === 0;
+
   while (parser.index < parser.length) {
     parser.tokenPos = parser.index;
 
@@ -175,11 +175,9 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
         case Token.CarriageReturn:
           lastIsCR = 1;
-          parser.nextCodePoint = parser.source.charCodeAt(++parser.index);
           parser.column = 0;
           parser.line++;
-          parser.precedingLineBreak = 1;
-          continue;
+
         case Token.LineFeed: {
           parser.precedingLineBreak = 1;
           parser.nextCodePoint = parser.source.charCodeAt(++parser.index);
@@ -198,7 +196,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           return scanIdentifierOrKeyword(parser, context, /* canBeKeyword */ 0);
 
         case Token.StringLiteral:
-          return parseStringLiteral(parser, context, char);
+          return scanStringLiteral(parser, context, char);
 
         case Token.LeadingZero:
           return scanLeadingZero(parser, context, char);
@@ -214,17 +212,17 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
         // `.`, `...`, `.123` (numeric literal)
         case Token.Period:
-          advance(parser);
-          if (isDecimal[parser.nextCodePoint])
+          const next = advance(parser);
+          if (next >= Chars.Zero && next <= Chars.Nine)
             return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, /* value */ 0, 1);
-          if (parser.nextCodePoint === Chars.Period) {
-            advance(parser);
-            if (parser.nextCodePoint === Chars.Period) {
-              advance(parser);
+          if (next === Chars.Period) {
+            const index = parser.index + 1;
+            if (index < parser.source.length && parser.source.charCodeAt(index) === Chars.Period) {
+              parser.column += 2;
+              parser.nextCodePoint = parser.source.charCodeAt((parser.index += 2));
               return Token.Ellipsis;
             }
           }
-
           return Token.Period;
 
         // `<`, `<=`, `<<`, `<<=`, `</`, `<!--`
@@ -256,24 +254,25 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
                 skipSingleLineComment(parser);
                 continue;
               }
-              return Token.LessThan;
             }
           }
           return Token.LessThan;
 
         // `?`, `??`, `?.`
         case Token.QuestionMark: {
-          advance(parser);
-          if ((context & Context.OptionsNext) < 1) return Token.QuestionMark;
-          if (parser.nextCodePoint === Chars.QuestionMark) {
-            advance(parser);
-            return Token.Coalesce;
-          }
-          if (parser.nextCodePoint === Chars.Period) {
-            // Check that it's not followed by any numbers
-            if (!isDecimal[parser.source.charCodeAt(parser.index + 1)]) {
+          let ch = advance(parser);
+          if (context & Context.OptionsNext) {
+            if (parser.nextCodePoint === Chars.QuestionMark) {
               advance(parser);
-              return Token.QuestionMarkPeriod;
+              return Token.Coalesce;
+            }
+            if (ch === Chars.Period) {
+              // Check that it's not followed by any numbers
+              ch = parser.source.charCodeAt(parser.index + 1) | 0;
+              if (ch > Chars.Nine || ch <= Chars.Zero) {
+                advance(parser);
+                return Token.QuestionMarkPeriod;
+              }
             }
           }
           return Token.QuestionMark;
@@ -283,17 +282,16 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
         case Token.Assign: {
           advance(parser);
           if (parser.index >= parser.length) return Token.Assign;
-          const ch = parser.nextCodePoint;
+          const char = parser.nextCodePoint;
 
-          if (ch === Chars.EqualSign) {
-            advance(parser);
-            if (parser.nextCodePoint === Chars.EqualSign) {
+          if (char === Chars.EqualSign) {
+            if (advance(parser) === Chars.EqualSign) {
               advance(parser);
               return Token.StrictEqual;
             }
             return Token.LooseEqual;
           }
-          if (ch === Chars.GreaterThan) {
+          if (char === Chars.GreaterThan) {
             advance(parser);
             return Token.Arrow;
           }
@@ -303,19 +301,14 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
         // `!`, `!=`, `!==`
         case Token.Negate:
-          advance(parser);
-          if (parser.nextCodePoint !== Chars.EqualSign) return Token.Negate;
-          advance(parser);
-          if (parser.nextCodePoint !== Chars.EqualSign) {
-            return Token.LooseNotEqual;
-          }
+          if (advance(parser) !== Chars.EqualSign) return Token.Negate;
+          if (advance(parser) !== Chars.EqualSign) return Token.LooseNotEqual;
           advance(parser);
           return Token.StrictNotEqual;
 
         // `%`, `%=`
         case Token.Modulo:
-          advance(parser);
-          if (parser.nextCodePoint !== Chars.EqualSign) return Token.Modulo;
+          if (advance(parser) !== Chars.EqualSign) return Token.Modulo;
           advance(parser);
           return Token.ModuloAssign;
 
@@ -323,15 +316,14 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
         case Token.Multiply: {
           advance(parser);
           if (parser.index >= parser.length) return Token.Multiply;
+          const char = parser.nextCodePoint;
 
-          const ch = parser.nextCodePoint;
-
-          if (ch === Chars.EqualSign) {
+          if (char === Chars.EqualSign) {
             advance(parser);
             return Token.MultiplyAssign;
           }
 
-          if (ch !== Chars.Asterisk) return Token.Multiply;
+          if (char !== Chars.Asterisk) return Token.Multiply;
           advance(parser);
           if (parser.nextCodePoint !== Chars.EqualSign) return Token.Exponentiate;
 
@@ -342,21 +334,21 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
         // `^`, `^=`
         case Token.BitwiseXor:
-          advance(parser);
-          if (parser.nextCodePoint !== Chars.EqualSign) return Token.BitwiseXor;
+          if (advance(parser) !== Chars.EqualSign) return Token.BitwiseXor;
           advance(parser);
           return Token.BitwiseXorAssign;
 
         // `+`, `++`, `+=`
         case Token.Add: {
           advance(parser);
-          const ch = parser.nextCodePoint;
-          if (ch === Chars.Plus) {
+          if (parser.index >= parser.length) return Token.Add;
+          const char = parser.nextCodePoint;
+          if (char === Chars.Plus) {
             advance(parser);
             return Token.Increment;
           }
 
-          if (ch === Chars.EqualSign) {
+          if (char === Chars.EqualSign) {
             advance(parser);
             return Token.AddAssign;
           }
@@ -368,9 +360,9 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
         case Token.Subtract: {
           advance(parser);
           if (parser.index >= parser.length) return Token.Subtract;
-          const ch = parser.nextCodePoint;
+          const char = parser.nextCodePoint;
 
-          if (ch === Chars.Hyphen) {
+          if (char === Chars.Hyphen) {
             advance(parser);
             if (
               (context & Context.Module) === 0 &&
@@ -387,7 +379,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
             return Token.Decrement;
           }
 
-          if (ch === Chars.EqualSign) {
+          if (char === Chars.EqualSign) {
             advance(parser);
             return Token.SubtractAssign;
           }
@@ -397,27 +389,24 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
         // `/`, `/=`, `/>`, '/*..*/'
         case Token.Divide: {
-          advance(parser);
-          if (parser.index < parser.length) {
-            const ch = parser.nextCodePoint;
-            if (ch === Chars.Slash) {
-              advance(parser);
-              skipSingleLineComment(parser);
-              continue;
-            }
-            if (ch === Chars.Asterisk) {
-              advance(parser);
-              const state = skipMultiLineComment(parser, context);
-              if (state < 1) return Token.Error;
-              continue;
-            }
-            if (context & Context.AllowRegExp) {
-              return scanRegularExpression(parser, context);
-            }
-            if (ch === Chars.EqualSign) {
-              advance(parser);
-              return Token.DivideAssign;
-            }
+          const char = advance(parser);
+          if (char === Chars.Slash) {
+            advance(parser);
+            skipSingleLineComment(parser);
+            continue;
+          }
+          if (char === Chars.Asterisk) {
+            advance(parser);
+            const state = skipMultiLineComment(parser, context);
+            if (state < 1) return Token.Error;
+            continue;
+          }
+          if (context & Context.AllowRegExp) {
+            return scanRegularExpression(parser, context);
+          }
+          if (char === Chars.EqualSign) {
+            advance(parser);
+            return Token.DivideAssign;
           }
 
           return Token.Divide;
@@ -428,13 +417,13 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           advance(parser);
           if (parser.index >= parser.length) return Token.BitwiseOr;
 
-          const ch = parser.nextCodePoint;
+          const char = parser.nextCodePoint;
 
-          if (ch === Chars.VerticalBar) {
+          if (char === Chars.VerticalBar) {
             advance(parser);
             return Token.LogicalOr;
           }
-          if (ch === Chars.EqualSign) {
+          if (char === Chars.EqualSign) {
             advance(parser);
             return Token.BitwiseOrAssign;
           }
@@ -447,32 +436,25 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           advance(parser);
           if (parser.index >= parser.length) return Token.GreaterThan;
 
-          const ch = parser.nextCodePoint;
+          let char = parser.nextCodePoint;
 
-          if (ch === Chars.EqualSign) {
+          if (char === Chars.EqualSign) {
             advance(parser);
             return Token.GreaterThanOrEqual;
           }
 
-          if (ch !== Chars.GreaterThan) return Token.GreaterThan;
+          if (char !== Chars.GreaterThan) return Token.GreaterThan;
 
-          advance(parser);
+          char = advance(parser);
 
-          if (parser.index < parser.length) {
-            const ch = parser.nextCodePoint;
-
-            if (ch === Chars.GreaterThan) {
-              advance(parser);
-              if (parser.nextCodePoint === Chars.EqualSign) {
-                advance(parser);
-                return Token.LogicalShiftRightAssign;
-              }
-              return Token.LogicalShiftRight;
-            }
-            if (ch === Chars.EqualSign) {
-              advance(parser);
-              return Token.ShiftRightAssign;
-            }
+          if (char === Chars.GreaterThan) {
+            if (advance(parser) !== Chars.EqualSign) return Token.LogicalShiftRight;
+            advance(parser);
+            return Token.LogicalShiftRightAssign;
+          }
+          if (char === Chars.EqualSign) {
+            advance(parser);
+            return Token.ShiftRightAssign;
           }
 
           return Token.ShiftRight;
@@ -481,15 +463,15 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
         // `&`, `&&`, `&=`
         case Token.BitwiseAnd: {
           advance(parser);
-          if (parser.index >= parser.length) return Token.BitwiseAnd;
-          const ch = parser.nextCodePoint;
+          if (parser.index >= parser.source.length) return Token.BitwiseAnd;
+          const char = parser.nextCodePoint;
 
-          if (ch === Chars.Ampersand) {
+          if (char === Chars.Ampersand) {
             advance(parser);
             return Token.LogicalAnd;
           }
 
-          if (ch === Chars.EqualSign) {
+          if (char === Chars.EqualSign) {
             advance(parser);
             return Token.BitwiseAndAssign;
           }

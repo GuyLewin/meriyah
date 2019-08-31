@@ -201,7 +201,7 @@ export const enum Token {
   /* Escapes */
 
   EscapedStrictReserved = 140,
-  EscapedKeyword = 141,
+  EscapedKeyword = 141
 }
 
 // Note: this *must* be kept in sync with the enum's order.

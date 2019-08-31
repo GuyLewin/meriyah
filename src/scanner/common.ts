@@ -42,6 +42,22 @@ export function consumeMultiUnitCodePoint(parser: ParserState, hi: number): Esca
   return 1;
 }
 
+export function consumeLineFeed(parser: ParserState, lastIsCR: 0 | 1) {
+  parser.nextCodePoint = parser.source.charCodeAt(++parser.index);
+  parser.precedingLineBreak = 1;
+  if (lastIsCR === 0) {
+    parser.column = 0;
+    parser.line++;
+  }
+}
+
+export function advanceNewline(parser: ParserState) {
+  parser.nextCodePoint = parser.source.charCodeAt(++parser.index);
+  parser.precedingLineBreak = 1;
+  parser.column = 0;
+  parser.line++;
+}
+
 // ECMA-262 11.2 White Space
 export function isExoticECMAScriptWhitespace(code: number): boolean {
   /**

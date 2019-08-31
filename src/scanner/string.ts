@@ -6,7 +6,7 @@ import { advance, toHex, fromCodePoint } from './common';
 import { report, Errors } from '../errors';
 import { handleEscapeError, UnicodeEscape } from './recovery';
 
-export function parseStringLiteral(parser: ParserState, context: Context, quote: number): Token {
+export function scanStringLiteral(parser: ParserState, context: Context, quote: number): Token {
   let ret = '';
   const { index: start } = parser;
 
@@ -25,11 +25,6 @@ export function parseStringLiteral(parser: ParserState, context: Context, quote:
 
     if (ch === Chars.Backslash) {
       ch = parser.source.charCodeAt(++parser.index);
-
-      if (parser.index >= parser.length) {
-        report(parser, context, Errors.InvalidEOFInEscape);
-        return Token.Error;
-      }
 
       if (ch >= 128) {
         ret += fromCodePoint(ch);
@@ -79,11 +74,6 @@ export function scanTemplate(parser: ParserState, context: Context): Token {
       ret += '$';
     } else if (ch === Chars.Backslash) {
       ch = parser.source.charCodeAt(++parser.index);
-
-      if (parser.index >= parser.length) {
-        report(parser, context, Errors.InvalidEOFInEscape);
-        return Token.Error;
-      }
 
       if (ch >= 128) {
         ret += fromCodePoint(ch);

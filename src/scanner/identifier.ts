@@ -36,7 +36,7 @@ export function scanIdentifierSlowPath(
       value += parser.source.slice(start, parser.index);
       hasEscape = 1;
       const code = scanIdentifierUnicodeEscape(parser);
-      if (!isIdentifierPart(code)) {
+      if (code < 0 || !isIdentifierPart(code)) {
         report(parser, context, handleIdentifierError(code));
         return Token.Error;
       }
