@@ -3,10 +3,6 @@ import { Context } from '../../src/common';
 import { create } from '../../src/parser';
 import { scanSingleToken } from '../../src/scanner/scan';
 
-const donna = require('esprima').parse;
-
-console.log(JSON.stringify(donna('foo', { loc: true })));
-
 describe('Scanner - Whitespace', () => {
   context('script', () => run(false));
   context('module', () => run(true));
