@@ -4,11 +4,11 @@ import { ParserState, Context } from '../common';
 import { scanNumber, scanLeadingZero } from './numeric';
 import { scanStringLiteral, scanTemplate } from './string';
 import { scanIdentifierOrKeyword, scanIdentifierSlowPath, scanUnicodeEscapeIdStart } from './identifier';
-import { advance, consumeMultiUnitCodePoint, isExoticECMAScriptWhitespace } from './common';
+import { advance, isExoticECMAScriptWhitespace } from './common';
 import { report, Errors } from '../errors';
 import { skipSingleLineComment, skipMultiLineComment } from './comments';
-import { isIDStart } from './unicode';
 import { scanRegularExpression } from './regexp';
+import { unicodeLookup } from './unicode';
 
 export const firstCharKinds = [
   /*   0 - Null               */ Token.Error,
@@ -149,7 +149,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
   while (parser.index < parser.length) {
     parser.tokenPos = parser.index;
 
-    const char = parser.nextCodePoint;
+    let char = parser.nextCodePoint;
 
     if (char <= 0x7e) {
       const token = firstCharKinds[char];
@@ -189,24 +189,31 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           continue;
         }
 
+        // Look for an identifier or keyword
         case Token.IdentifierOrKeyword:
           return scanIdentifierOrKeyword(parser, context, /* canBeKeyword */ 1);
 
+        // Look for an identifier
         case Token.Identifier:
           return scanIdentifierOrKeyword(parser, context, /* canBeKeyword */ 0);
 
+        // Look for a string literal
         case Token.StringLiteral:
           return scanStringLiteral(parser, context, char);
 
+        // Look for a decimal number
+        case Token.NumericLiteral:
+          return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, 0);
+
+        // Look for leasing zero decimal number
         case Token.LeadingZero:
           return scanLeadingZero(parser, context, char);
 
-        case Token.NumericLiteral:
-          return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, /* value */ 0, 0);
-
+        // Look for a escaped identifier
         case Token.UnicodeEscapeIdStart:
           return scanUnicodeEscapeIdStart(parser, context);
 
+        // Look for a template string
         case Token.TemplateTail:
           return scanTemplate(parser, context);
 
@@ -214,7 +221,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
         case Token.Period:
           const next = advance(parser);
           if (next >= Chars.Zero && next <= Chars.Nine)
-            return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, /* value */ 0, 1);
+            return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, 1);
           if (next === Chars.Period) {
             const index = parser.index + 1;
             if (index < parser.source.length && parser.source.charCodeAt(index) === Chars.Period) {
@@ -230,9 +237,7 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           advance(parser);
           if (parser.index < parser.length) {
             if (parser.nextCodePoint === Chars.LessThan) {
-              advance(parser);
-              // @ts-ignore
-              if (parser.index < parser.length && parser.nextCodePoint === Chars.EqualSign) {
+              if (advance(parser) === Chars.EqualSign) {
                 parser.index++;
                 return Token.ShiftLeftAssign;
               }
@@ -491,7 +496,18 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
       continue;
     }
 
-    if (isIDStart(char) || consumeMultiUnitCodePoint(parser, parser.nextCodePoint)) {
+    if ((char & 0xfc00) === 0xd800 || ((unicodeLookup[(char >>> 5) + 34816] >>> char) & 31 & 1) !== 0) {
+      if ((char & 0xfc00) === 0xdc00) {
+        char = ((char & 0x3ff) << 10) | (char & 0x3ff) | 0x10000;
+        if (((unicodeLookup[(char >>> 5) + 0] >>> char) & 31 & 1) === 0) {
+          report(parser, context, Errors.InvalidSMPCharacter);
+          return Token.Error;
+        }
+        parser.index++;
+        parser.nextCodePoint = char;
+        parser.column++;
+      }
+
       return scanIdentifierSlowPath(parser, context, '', /* canBeKeyword */ 0);
     }
 
