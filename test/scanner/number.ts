@@ -236,7 +236,6 @@ describe('Scanner - Identifier', () => {
   fail('fails on 008.3', '008.3', Context.Strict);
   fail('fails on 008.3n', '008.3n', Context.Empty);
   fail('fails on 0b2', '0b2', Context.Empty);
-  // fail('fails on 00b0', '00b0', Context.Empty);
   fail('fails on 0b', '0b', Context.Empty);
   fail('fails on 00', '00', Context.Strict);
   fail('fails on 000', '000', Context.Strict);
@@ -252,7 +251,7 @@ describe('Scanner - Identifier', () => {
   fail('fails on decimal integer followed by identifier', '3in1', Context.Empty);
   fail('fails on decimal integer followed by identifier', '3.e', Context.Empty);
   fail('fails on decimal integer followed by identifier', '3.e+abc', Context.Empty);
-  // fail('fails on Binary-integer-literal-like sequence with a leading 0', '00b0;', Context.Empty);
+  fail('fails on Binary-integer-literal-like sequence with a leading 0', '00b0;', Context.Empty);
   fail('fails on Octal-integer-literal-like sequence containing an invalid digit', '0o8', Context.Strict);
   fail('fails on Octal-integer-literal-like sequence containing an invalid digit', '0b3', Context.Strict);
   fail('fails on Octal-integer-literal-like sequence without any digits', '0o', Context.Strict);
@@ -333,9 +332,8 @@ describe('Scanner - Identifier', () => {
   fail('fails on 0x0__0n', '0x0__0n', Context.Empty);
   fail('fails on 0x0_n', '0x0_n', Context.Empty);
   fail('fails on 00_0n', '00_0n', Context.Empty);
-  // fail('fails on 0_8n', '0_8n', Context.Empty);
+  fail('fails on 0_8n', '0_8n', Context.Empty);
   fail('fails on 0__0123456789n', '0__0123456789n', Context.Empty);
   fail('fails on 0o0__0n', '0o0__0n', Context.Empty);
-  //fail('fails on 1\u005F0123456789n', '1\\u005F0123456789n', Context.Empty);
   fail('fails on 0O12345_670_0_035672345674_3_5_', '0O12345_670_0_035672345674_3_5_', Context.Empty);
 });

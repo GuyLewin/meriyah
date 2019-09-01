@@ -182,7 +182,7 @@ function run(isModule: boolean) {
     newLine: 1,
     index: 16,
     hasNext: false,
-    line: 4,
+    line: 5,
     column: 5
   });
 

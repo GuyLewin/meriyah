@@ -95,6 +95,7 @@ export function scanNumber(
     char = advance(parser);
   } else if ((char | 32) == Chars.LowerE) {
     char = advance(parser);
+
     // '-', '+'
     if (CharTypes[char] & CharFlags.Exponent) char = advance(parser);
 

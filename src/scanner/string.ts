@@ -10,21 +10,20 @@ export function scanStringLiteral(parser: ParserState, context: Context, quote: 
   let ret = '';
   const { index: start } = parser;
 
-  let ch = parser.source.charCodeAt(++parser.index);
+  let ch = advance(parser);
 
   while ((CharTypes[ch] & CharFlags.IsWhiteSpaceOrLineTerminator) === 0) {
     if (ch === quote) {
       advance(parser); // Consume the quote
 
-      if (context & Context.OptionsRaw) parser.source.slice(start, parser.index);
+      if (context & Context.OptionsRaw) parser.tokenRaw = parser.source.slice(start, parser.index);
 
       parser.tokenValue = ret;
 
       return Token.StringLiteral;
     }
-
-    if (ch === Chars.Backslash) {
-      ch = parser.source.charCodeAt(++parser.index);
+    if ((ch & 8) === 8 && ch === Chars.Backslash) {
+      ch = advance(parser);
 
       if (ch >= 128) {
         ret += fromCodePoint(ch);
@@ -42,7 +41,8 @@ export function scanStringLiteral(parser: ParserState, context: Context, quote: 
     } else {
       ret += fromCodePoint(ch);
     }
-    ch = parser.source.charCodeAt(++parser.index);
+
+    ch = advance(parser);
 
     if (parser.index >= parser.length) {
       report(parser, context, Errors.UnterminatedString);
@@ -60,7 +60,8 @@ export function scanTemplate(parser: ParserState, context: Context): Token {
 
   let ret: string | null = '';
   let token: Token = Token.TemplateTail;
-  let ch = parser.source.charCodeAt(++parser.index);
+
+  let ch = advance(parser);
 
   while (ch !== Chars.Backtick) {
     if (ch === Chars.Dollar) {
@@ -73,7 +74,7 @@ export function scanTemplate(parser: ParserState, context: Context): Token {
       }
       ret += '$';
     } else if (ch === Chars.Backslash) {
-      ch = parser.source.charCodeAt(++parser.index);
+      ch = advance(parser);
 
       if (ch >= 128) {
         ret += fromCodePoint(ch);
@@ -90,6 +91,8 @@ export function scanTemplate(parser: ParserState, context: Context): Token {
           if (ch < 0) {
             ch = -ch;
             token = Token.TemplateCont;
+          } else if (ch === 0x11000) {
+            return Token.Error;
           }
           break;
         } else {
@@ -99,7 +102,10 @@ export function scanTemplate(parser: ParserState, context: Context): Token {
 
         ch = parser.nextCodePoint;
       }
-    } else if (CharTypes[ch] & CharFlags.IsWhiteSpaceOrLineTerminator || (ch ^ Chars.LineSeparator) <= 1) {
+    } else if (
+      ((ch & 83) < 3 && CharTypes[ch] & CharFlags.IsWhiteSpaceOrLineTerminator) ||
+      (ch ^ Chars.LineSeparator) <= 1
+    ) {
       if (ch === Chars.CarriageReturn) {
         if (parser.index < parser.length && parser.source.charCodeAt(parser.index) === Chars.LineFeed) {
           ret += fromCodePoint(ch);
@@ -115,7 +121,7 @@ export function scanTemplate(parser: ParserState, context: Context): Token {
       ret += fromCodePoint(ch);
     }
 
-    ch = parser.source.charCodeAt(++parser.index);
+    ch = advance(parser);
 
     if (parser.index >= parser.length) {
       report(parser, context, Errors.UnterminatedTemplate);
@@ -152,7 +158,7 @@ function scanLooserTemplateSegment(parser: ParserState, context: Context, ch: nu
 
     if (parser.index >= parser.length) {
       report(parser, context, Errors.UnterminatedTemplate);
-      return Token.Error;
+      return 0x11000;
     }
   }
 
@@ -276,19 +282,19 @@ export function parseEscape(parser: ParserState, context: Context, first: number
 
     // ASCII escapes
     case Chars.LowerX: {
-      const hi = (parser.nextCodePoint = parser.source.charCodeAt(++parser.index));
+      const hi = advance(parser);
       if ((CharTypes[hi] & CharFlags.Hex) === 0) return UnicodeEscape.InvalidHex;
-      const lo = (parser.nextCodePoint = parser.source.charCodeAt(++parser.index));
+      const lo = advance(parser);
       if ((CharTypes[lo] & CharFlags.Hex) === 0) return UnicodeEscape.InvalidHex;
       return (toHex(hi) << 4) | toHex(lo);
     }
 
     // UCS-2/Unicode escapes
     case Chars.LowerU: {
-      let ch = parser.source.charCodeAt(++parser.index);
+      let ch = advance(parser);
 
       if (ch === Chars.LeftBrace) {
-        ch = parser.source.charCodeAt(++parser.index); // skip: '{'
+        ch = advance(parser); // skip: '{'
 
         let code = 0;
         let digits = 0;
@@ -297,6 +303,7 @@ export function parseEscape(parser: ParserState, context: Context, first: number
           code = (code << 4) | toHex(ch);
           if (code > 0x10ffff) return UnicodeEscape.OutOfRange;
           ch = parser.source.charCodeAt(++parser.index);
+          parser.column++;
           digits++;
         }
 
@@ -313,6 +320,8 @@ export function parseEscape(parser: ParserState, context: Context, first: number
       if ((CharTypes[ch3] & CharFlags.Hex) === 0) return UnicodeEscape.InvalidHex;
       const ch4 = parser.source.charCodeAt(parser.index + 3);
       if ((CharTypes[ch4] & CharFlags.Hex) === 0) return UnicodeEscape.InvalidHex;
+
+      parser.column += 3;
 
       parser.nextCodePoint = parser.source.charCodeAt((parser.index += 3));
 

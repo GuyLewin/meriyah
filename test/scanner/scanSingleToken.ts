@@ -111,4 +111,40 @@ describe('Scanner - scanSingleToken', () => {
       );
     });
   }
+
+  it("scans '.' in '..'", () => {
+    const parser = create('..', undefined);
+    const found = scanSingleToken(parser, Context.Empty);
+
+    t.deepEqual(
+      {
+        hasNext: parser.index < parser.length,
+        line: parser.line,
+        column: parser.column
+      },
+      {
+        hasNext: true,
+        line: 1,
+        column: 1
+      }
+    );
+  });
+
+  it("scans '1' in '?.1'", () => {
+    const parser = create('?.1', undefined);
+    const found = scanSingleToken(parser, Context.OptionsNext);
+
+    t.deepEqual(
+      {
+        hasNext: parser.index < parser.length,
+        line: parser.line,
+        column: parser.column
+      },
+      {
+        hasNext: true,
+        line: 1,
+        column: 1
+      }
+    );
+  });
 });

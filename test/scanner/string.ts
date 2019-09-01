@@ -32,6 +32,14 @@ describe('Scanner - String', () => {
     [Context.Empty, '""', ''],
     [Context.Empty, '"123"', '123'],
     [Context.Empty, '"true"', 'true'],
+    [Context.Empty, '"\\f"', '\f'],
+    [Context.Empty, '"\\r"', '\r'],
+    [Context.Empty, '"\\n"', '\n'],
+    [Context.Empty, '"\\t"', '\t'],
+    [Context.Empty, '"\\v"', '\v'],
+    [Context.Empty, '"\f"', '\f'],
+    [Context.Empty, '"\t"', '\t'],
+    [Context.Empty, '"\v"', '\v'],
     [Context.Empty, '"\
     "', '    '],
 
@@ -250,4 +258,6 @@ describe('Scanner - String', () => {
   fail('fails on "\\xbq"', '"\\xbq"', Context.Empty);
   fail('fails on "\\xAq"', '"\\xAq"', Context.Empty);
   fail('fails on "\\xFq"', '"\\xFq"', Context.Empty);
+  fail('fails on "\\xFq"', '"\\xFq"', Context.Empty);
+  fail('fails on "\n\r"', '"\n\r"', Context.Empty);
 });

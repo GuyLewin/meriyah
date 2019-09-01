@@ -32,18 +32,20 @@ export function scanIdentifierSlowPath(
   let hasEscape: 0 | 1 = 0;
 
   while (parser.index < parser.length) {
-    if (parser.nextCodePoint === Chars.Backslash) {
+    if (isIdentifierPart(parser.nextCodePoint)) {
+      advance(parser);
+    } else if (parser.nextCodePoint === Chars.Backslash) {
       value += parser.source.slice(start, parser.index);
       hasEscape = 1;
       const code = scanIdentifierUnicodeEscape(parser);
-      if (code < 0 || !isIdentifierPart(code)) {
+      if (!isIdentifierPart(code)) {
         report(parser, context, handleIdentifierError(code));
         return Token.Error;
       }
       canBeKeyword = 1;
       value += fromCodePoint(code);
       start = parser.index;
-    } else if (isIdentifierPart(parser.nextCodePoint) || consumeMultiUnitCodePoint(parser, parser.nextCodePoint)) {
+    } else if (consumeMultiUnitCodePoint(parser, parser.nextCodePoint)) {
       advance(parser);
     } else {
       break;

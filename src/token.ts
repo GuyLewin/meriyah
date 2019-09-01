@@ -176,7 +176,7 @@ export const enum Token {
   PrivateField = 122,
   BigIntLiteral = 123,
   EnumKeyword = 124,
-  UnicodeEscapeIdStart = 125,
+  Backslash = 125,
 
   /* Template */
 
@@ -358,7 +358,7 @@ export const KeywordDescTable = [
   '#',
   'bigInt',
   'enum',
-  'UnicodeEscapeIdStart',
+  'Backslash',
 
   'TemplateHead',
   'TemplateMiddle',

@@ -103,7 +103,7 @@ export const firstCharKinds = [
   /*  89 - Y                  */ Token.Identifier,
   /*  90 - Z                  */ Token.Identifier,
   /*  91 - [                  */ Token.LeftBracket,
-  /*  92 - \                  */ Token.UnicodeEscapeIdStart,
+  /*  92 - \                  */ Token.Backslash,
   /*  93 - ]                  */ Token.RightBracket,
   /*  94 - ^                  */ Token.BitwiseXor,
   /*  95 - _                  */ Token.Identifier,
@@ -189,31 +189,31 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
           continue;
         }
 
-        // Look for an identifier or keyword
+        // `a`...`z`
         case Token.IdentifierOrKeyword:
           return scanIdentifierOrKeyword(parser, context, /* canBeKeyword */ 1);
 
-        // Look for an identifier
+        // `A`...`Z`, `_var`, `$var`
         case Token.Identifier:
           return scanIdentifierOrKeyword(parser, context, /* canBeKeyword */ 0);
 
-        // Look for a string literal
-        case Token.StringLiteral:
-          return scanStringLiteral(parser, context, char);
-
-        // Look for a decimal number
+        // `1`...`9`
         case Token.NumericLiteral:
           return scanNumber(parser, context, /* nonOctalDecimalInteger */ 0, 0);
 
-        // Look for leasing zero decimal number
+        // `'string'`, `"string"`
+        case Token.StringLiteral:
+          return scanStringLiteral(parser, context, char);
+
+        // `0`
         case Token.LeadingZero:
           return scanLeadingZero(parser, context, char);
 
-        // Look for a escaped identifier
-        case Token.UnicodeEscapeIdStart:
+        // `\\u{N}var`
+        case Token.Backslash:
           return scanUnicodeEscapeIdStart(parser, context);
 
-        // Look for a template string
+        // ``string``
         case Token.TemplateTail:
           return scanTemplate(parser, context);
 
@@ -236,18 +236,20 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
         case Token.LessThan:
           advance(parser);
           if (parser.index < parser.length) {
-            if (parser.nextCodePoint === Chars.LessThan) {
+            const next = parser.nextCodePoint;
+
+            if (next === Chars.LessThan) {
               if (advance(parser) === Chars.EqualSign) {
                 parser.index++;
                 return Token.ShiftLeftAssign;
               }
               return Token.ShiftLeft;
             }
-            if (parser.nextCodePoint === Chars.EqualSign) {
+            if (next === Chars.EqualSign) {
               advance(parser);
               return Token.LessThanOrEqual;
             }
-            if (parser.nextCodePoint === Chars.Exclamation) {
+            if (next === Chars.Exclamation) {
               // Treat HTML begin-comment as comment-till-end-of-line.
               if (
                 parser.source.charCodeAt(parser.index + 2) === Chars.Hyphen &&
@@ -265,9 +267,10 @@ export function scanSingleToken(parser: ParserState, context: Context): Token {
 
         // `?`, `??`, `?.`
         case Token.QuestionMark: {
-          let ch = advance(parser);
+          advance(parser);
           if (context & Context.OptionsNext) {
-            if (parser.nextCodePoint === Chars.QuestionMark) {
+            let ch = parser.nextCodePoint;
+            if (ch === Chars.QuestionMark) {
               advance(parser);
               return Token.Coalesce;
             }

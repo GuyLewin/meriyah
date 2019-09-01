@@ -45,6 +45,9 @@ describe('Scanner - Identifier (recovery)', () => {
     ['Invalid hexadecimal escape sequence', '"\\xx55a"'],
     ['Expected a closing curly brace `}`', '"\\u{10ffff"'],
     ['Invalid hexadecimal escape sequence', '"\\u0!062"'],
+    ['Invalid unescaped line break in string literal', '"\n\r"'],
+    ['Unterminated string literal', '"\\'],
+    ['Unterminated string literal', '"\\a'],
     ['Unicode escape sequence value is higher than 0x10FFFF', '"\\u{1100033}"'],
     ['Invalid hexadecimal escape sequence', '"\\u0!062"'],
     ['Expected a closing curly brace `}`', '"\\u{70bc"'],
@@ -54,6 +57,14 @@ describe('Scanner - Identifier (recovery)', () => {
     ['Escapes \\8 or \\9 are not syntactically valid escapes', '"\\999998"'],
     ['Escapes \\8 or \\9 are not syntactically valid escapes', '"\\8"'],
     ['Escapes \\8 or \\9 are not syntactically valid escapes', '"\\9"'],
+
+    // Template
+    ['Unterminated template literal', '`'],
+    ['Unterminated template literal', '`\\\\'],
+    ['Unterminated template literal', '`\n\r'],
+    ['Unterminated template literal', '`\r'],
+    ['Unterminated template literal', '`\n'],
+    ['Unterminated template literal', '`\\`'],
 
     // Identifiers
     ['Invalid character', '፰'],

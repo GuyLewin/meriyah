@@ -31,8 +31,10 @@ describe('Scanner - Identifier', () => {
     [Context.Empty, 'a_______3333333', 'a_______3333333'],
     [Context.Empty, 'abc', 'abc'],
     [Context.Empty, '    $', '$'],
-    [Context.Empty, '$8', '$8'],
-    //[Context.Empty, '/* skip */   $', '$'],
+    [Context.Empty, '𐀀', '𐀀'],
+    [Context.Empty, '𠮷野家', '𠮷野家'],
+    [Context.Empty, '𢭃', '𢭃'],
+    [Context.Empty, '/* skip */   $', '$'],
     [Context.Empty, 'CAN_NOT_BE_A_KEYWORD', 'CAN_NOT_BE_A_KEYWORD'],
 
     // IdentifierStart - Unicode 4.0
